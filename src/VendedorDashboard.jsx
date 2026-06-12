@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 import { 
   Search, ShoppingCart, CreditCard, DollarSign, 
   ArrowUpRight, ArrowDownRight, RefreshCw, X, Check,
-  TrendingUp, TrendingDown, BookOpen, Send, User, LogOut, Barcode, Plus
+  TrendingUp, TrendingDown, BookOpen, Send, User, LogOut, Barcode, Plus,
+  Edit, Printer
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { jsPDF } from 'jspdf';
@@ -13,6 +14,7 @@ import BarcodeScannerModal from './BarcodeScannerModal';
 export default function VendedorDashboard({ user, onLogout, viewMode }) {
   // Tabs: 'ventas', 'movimientos', 'mi_caja'
   const [activeTab, setActiveTab] = useState('ventas');
+  const [selectedProductToEdit, setSelectedProductToEdit] = useState(null);
   
   // Scanners and Product Form toggles
   const [isBarcodeOpen, setIsBarcodeOpen] = useState(false);
@@ -1328,21 +1330,25 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <button 
                                 type="button" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProductToEdit(prod);
+                                  setIsProductFormOpen(true);
+                                }}
                                 style={{ 
                                   background: 'none', 
                                   padding: '8px', 
                                   border: '1px solid #eef2eb', 
                                   borderRadius: '10px', 
-                                  color: '#8fa58f', 
+                                  color: '#4a7c3f', 
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center'
                                 }}
+                                title="Editar producto (Foto, GPS, Escáner)"
                               >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                                </svg>
+                                <Edit size={15} />
                               </button>
                               <button 
                                 onClick={(e) => { e.stopPropagation(); !hasNoStock && addToCart(prod); }}
@@ -1984,8 +1990,12 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
 
       <ProductForm
         isOpen={isProductFormOpen}
-        onClose={() => { setIsProductFormOpen(false); setPrefilledBarcode(''); }}
-        productToEdit={null}
+        onClose={() => { 
+          setIsProductFormOpen(false); 
+          setPrefilledBarcode(''); 
+          setSelectedProductToEdit(null); 
+        }}
+        productToEdit={selectedProductToEdit}
         onProductSaved={fetchProducts}
         prefilledBarcode={prefilledBarcode}
         user={user}

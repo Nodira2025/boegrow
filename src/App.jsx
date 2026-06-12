@@ -60,17 +60,6 @@ export default function App() {
             <LayoutSwitcher viewMode={viewMode} onToggle={toggleViewMode} />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {/* Settings */}
-              <button
-                onClick={() => {
-                  setApiKeyInput(localStorage.getItem('gemini_api_key') || '');
-                  setIsSettingsOpen(true);
-                }}
-                style={styles.iconBtn}
-              >
-                <Settings size={17} />
-              </button>
-
               {/* Notifications bell */}
               <button onClick={() => setIsNotifOpen(true)} style={styles.iconBtn}>
                 <div style={{ position: 'relative' }}>
@@ -94,61 +83,7 @@ export default function App() {
             <AdminDashboard user={user} onLogout={handleLogout} viewMode={viewMode} />
           )}
 
-          {/* Settings modal */}
-          {isSettingsOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsSettingsOpen(false)}>
-              <div className="glass-panel" style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <div style={styles.modalHeader}>
-                  <h3 style={{ fontSize: '15px' }}>Configuración del Sistema</h3>
-                  <button onClick={() => setIsSettingsOpen(false)} style={styles.closeBtn}>
-                    <X size={18} />
-                  </button>
-                </div>
 
-                <div style={{ marginTop: '12px' }}>
-                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                    Google Gemini API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="Pega tu API Key de Google AI Studio..."
-                    style={{ marginBottom: '8px' }}
-                  />
-                  <p style={{ fontSize: '9px', color: 'var(--text-muted)', lineHeight: '1.3' }}>
-                    * Utilizada para escanear productos y extraer datos con IA. Si se deja vacía, el escáner funcionará en <strong>Modo Demo</strong> simulando la IA.
-                  </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '16px' }}>
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('gemini_api_key');
-                      setApiKeyInput('');
-                      alert('API Key eliminada. Modo Demo activado.');
-                      setIsSettingsOpen(false);
-                    }}
-                    className="btn-secondary"
-                    style={{ padding: '8px', fontSize: '12px' }}
-                  >
-                    Usar Demo
-                  </button>
-                  <button
-                    onClick={() => {
-                      localStorage.setItem('gemini_api_key', apiKeyInput.trim());
-                      alert('Configuración guardada correctamente.');
-                      setIsSettingsOpen(false);
-                    }}
-                    className="btn-primary"
-                    style={{ padding: '8px', fontSize: '12px' }}
-                  >
-                    Guardar Key
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
       )}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { X, Save, Camera, Sparkles, Barcode, MapPin } from 'lucide-react';
+import { X, Save, Camera, Sparkles, Barcode, MapPin, Printer } from 'lucide-react';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import AiVisionScanner from './AiVisionScanner';
 
@@ -228,6 +228,96 @@ export default function ProductForm({ isOpen, onClose, productToEdit, onProductS
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePrintLabel = () => {
+    if (!formData.barcode) {
+      alert('El producto debe tener un código de barras o QR para poder imprimir la etiqueta.');
+      return;
+    }
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(formData.barcode)}`;
+    const printWindow = window.open('', '_blank', 'width=400,height=400');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Imprimir Etiqueta - ${formData.name}</title>
+          <style>
+            body {
+              font-family: 'Inter', sans-serif;
+              margin: 0;
+              padding: 10px;
+              text-align: center;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              box-sizing: border-box;
+            }
+            .label-container {
+              border: 1.5px dashed #4a7c3f;
+              border-radius: 8px;
+              padding: 12px;
+              width: 230px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              background-color: #ffffff;
+            }
+            .brand {
+              font-size: 10px;
+              font-weight: 800;
+              color: #4a7c3f;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              margin-bottom: 4px;
+            }
+            .product-name {
+              font-size: 12px;
+              font-weight: 700;
+              color: #2c3e2c;
+              margin-bottom: 8px;
+              word-break: break-word;
+            }
+            .qr-code {
+              width: 90px;
+              height: 90px;
+              margin-bottom: 6px;
+            }
+            .barcode-text {
+              font-size: 10px;
+              font-family: 'Courier New', Courier, monospace;
+              color: #333333;
+              font-weight: bold;
+            }
+            @media print {
+              body {
+                height: auto;
+              }
+              .label-container {
+                border: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="label-container">
+            <div class="brand">BO growclub 🌿</div>
+            <div class="product-name">${formData.name}</div>
+            <img class="qr-code" src="${qrUrl}" alt="QR" />
+            <div class="barcode-text">${formData.barcode}</div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   // Barcode Handlers
@@ -467,9 +557,22 @@ export default function ProductForm({ isOpen, onClose, productToEdit, onProductS
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%', marginTop: '8px' }}>
-            <Save size={16} /> {loading ? 'Guardando...' : 'Guardar en Catálogo'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            {productToEdit && (
+              <button 
+                type="button" 
+                onClick={handlePrintLabel} 
+                className="btn-secondary" 
+                style={{ flex: 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '40px', padding: 0 }}
+                title="Imprimir Etiqueta con Código QR único"
+              >
+                <Printer size={16} /> Etiqueta
+              </button>
+            )}
+            <button type="submit" disabled={loading} className="btn-primary" style={{ flex: 1, height: '40px', marginTop: 0 }}>
+              <Save size={16} /> {loading ? 'Guardando...' : 'Guardar en Catálogo'}
+            </button>
+          </div>
         </form>
       </div>
 
