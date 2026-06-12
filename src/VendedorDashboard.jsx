@@ -4,7 +4,7 @@ import {
   Search, ShoppingCart, CreditCard, DollarSign, 
   ArrowUpRight, ArrowDownRight, RefreshCw, X, Check,
   TrendingUp, TrendingDown, BookOpen, Send, User, LogOut, Barcode, Plus,
-  Edit, Printer
+  Edit, Printer, ShoppingBag
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { jsPDF } from 'jspdf';
@@ -61,6 +61,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
   // Success Modal (Checkout completion)
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [salesList, setSalesList] = useState([]);
 
   // Loading indicator for queries
   const [loading, setLoading] = useState(false);
@@ -181,13 +182,15 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
   const fetchRegisterStats = async () => {
     if (!register) return;
     try {
-      // 1. Get Sales
+      // 1. Get Sales ordered by date descending
       const { data: sales, error: salesError } = await supabase
         .from('sales')
         .select('*')
-        .eq('cash_register_id', register.id);
+        .eq('cash_register_id', register.id)
+        .order('created_at', { ascending: false });
 
       if (salesError) throw salesError;
+      setSalesList(sales || []);
 
       // 2. Get Cash Flows
       const { data: flows, error: flowsError } = await supabase
@@ -197,12 +200,13 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
 
       if (flowsError) throw flowsError;
 
-      // Calculate totals
+      // Calculate totals (excluding cancelled sales)
       let salesTotal = 0;
       let cashSales = 0;
       let bankSales = 0;
       
       sales.forEach(sale => {
+        if (sale.status === 'cancelled') return;
         salesTotal += parseFloat(sale.total);
         if (sale.payment_method === 'efectivo') {
           cashSales += parseFloat(sale.total);
@@ -239,6 +243,98 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
       setActualBalanceInput(String(Math.round(expectedCash)));
     } catch (err) {
       console.error('Error fetching register stats:', err);
+    }
+  };
+
+  const handleCancelSale = async (sale) => {
+    if (!window.confirm(`¿Estás seguro de que deseas cancelar la venta por $${parseFloat(sale.total).toLocaleString('es-AR')}? Esta acción devolverá los productos al stock.`)) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // 1. Update sale status to 'cancelled'
+      const { error: updateError } = await supabase
+        .from('sales')
+        .update({ status: 'cancelled' })
+        .eq('id', sale.id);
+
+      if (updateError) throw updateError;
+
+      // 2. Fetch sale items to know what products were sold and their quantities
+      const { data: items, error: itemsError } = await supabase
+        .from('sale_items')
+        .select('product_id, quantity, product_name')
+        .eq('sale_id', sale.id);
+
+      if (itemsError) throw itemsError;
+
+      // 3. Restore stock for each item
+      if (items && items.length > 0) {
+        for (const item of items) {
+          if (!item.product_id) continue;
+          
+          // Get current stock
+          const { data: prodData, error: prodErr } = await supabase
+            .from('products')
+            .select('stock, name')
+            .eq('id', item.product_id)
+            .single();
+            
+          if (prodErr) {
+            console.error(`Error fetching product stock for ID ${item.product_id}:`, prodErr);
+            continue;
+          }
+          
+          const currentStock = parseInt(prodData?.stock || 0, 10);
+          const newStock = currentStock + parseInt(item.quantity || 0, 10);
+          
+          // Update product stock
+          const { error: stockErr } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', item.product_id);
+            
+          if (stockErr) {
+            console.error(`Error updating stock for product ID ${item.product_id}:`, stockErr);
+            continue;
+          }
+
+          // Write log to product_logs
+          await supabase.from('product_logs').insert({
+            product_id: item.product_id,
+            product_name: prodData.name || item.product_name,
+            user_id: user.id,
+            user_name: user.name,
+            action: 'edited',
+            details: {
+              reason: 'Venta cancelada (Stock devuelto)',
+              sale_id: sale.id,
+              quantity_returned: item.quantity,
+              previous_stock: currentStock,
+              new_stock: newStock
+            }
+          });
+        }
+      }
+
+      // 4. Create in-app notification
+      await supabase.from('notifications').insert({
+        recipient_role: 'supervisor',
+        title: 'Venta Cancelada',
+        message: `${user.name} canceló la venta ${sale.id.substring(0, 8)} por un total de $${parseFloat(sale.total).toLocaleString('es-AR')}.`
+      });
+
+      alert('La venta ha sido cancelada y el stock ha sido restaurado.');
+      
+      // 5. Refresh stats, sales list and product catalog
+      await fetchRegisterStats();
+      await fetchProducts();
+    } catch (err) {
+      console.error('Error cancelling sale:', err);
+      alert('Error al cancelar la venta.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1868,6 +1964,72 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                 </div>
               </div>
 
+            </div>
+
+            {/* Ventas de la Sesión Section */}
+            <div style={{ 
+              backgroundColor: '#ffffff', 
+              borderRadius: '16px', 
+              border: '1px solid #eef2eb', 
+              padding: '24px', 
+              width: '100%',
+              marginTop: '20px'
+            }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f5f5f4', paddingBottom: '14px', marginBottom: '16px', fontSize: '16px', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                <ShoppingBag size={18} style={{ color: '#4a7c3f' }} />
+                <span>Ventas de la Sesión (Caja Abierta)</span>
+              </h3>
+              
+              {salesList.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#8fa58f', padding: '16px 0', fontSize: '13px' }}>
+                  No hay ventas registradas en esta sesión.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {salesList.map(sale => {
+                    const saleTime = new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const isCancelled = sale.status === 'cancelled';
+                    return (
+                      <div key={sale.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        border: '1px solid #f5f5f4',
+                        borderRadius: '12px',
+                        backgroundColor: isCancelled ? '#fafaf9' : '#ffffff',
+                        opacity: isCancelled ? 0.6 : 1
+                      }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', color: '#2c3e2c', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                            ${parseFloat(sale.total).toLocaleString('es-AR')}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '11px', color: '#8fa58f' }}>
+                            Hora: {saleTime} | Pago: <span style={{ textTransform: 'capitalize' }}>{sale.payment_method}</span>
+                          </p>
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {isCancelled ? (
+                            <span className="badge badge-danger" style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px' }}>Cancelada</span>
+                          ) : (
+                            <>
+                              <span className="badge badge-success" style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px' }}>Cobrada</span>
+                              <button 
+                                onClick={() => handleCancelSale(sale)}
+                                className="btn-danger"
+                                style={{ padding: '4px 8px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '6px' }}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
           </div>

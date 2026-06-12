@@ -163,11 +163,15 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
       const { data: sales, error: sError } = await salesQuery;
       if (sError) throw sError;
 
-      const salesTotal = sales?.reduce((sum, s) => sum + parseFloat(s.total || 0), 0) || 0;
-      const salesCount = sales?.length || 0;
+      const salesTotal = sales?.reduce((sum, s) => {
+        if (s.status === 'cancelled') return sum;
+        return sum + parseFloat(s.total || 0);
+      }, 0) || 0;
+      const salesCount = sales?.filter(s => s.status !== 'cancelled').length || 0;
 
       let salesCostTotal = 0;
       sales?.forEach(s => {
+        if (s.status === 'cancelled') return;
         s.sale_items?.forEach(item => {
           const qty = parseFloat(item.quantity || 0);
           const prodObj = Array.isArray(item.products) ? item.products[0] : item.products;
@@ -298,6 +302,7 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
             id,
             total,
             payment_method,
+            status,
             created_at,
             profiles:seller_id (name)
           `)
@@ -337,9 +342,10 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
             opening_balance,
             closing_balance,
             actual_balance,
-            seller:seller_id (name)
+            status,
+            seller:seller_id (name, id)
           `)
-          .eq('status', 'closed')
+          .in('status', ['closed', 'cancelled'])
           .gte('closed_at', `${startDate}T00:00:00.000Z`)
           .lte('closed_at', `${endDate}T23:59:59.999Z`);
         
@@ -351,6 +357,136 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
       setModalData(data);
     } catch (err) {
       console.error('Error fetching modal data:', err);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleCancelSaleAdmin = async (sale) => {
+    if (!window.confirm(`¿Estás seguro de que deseas cancelar la venta por $${parseFloat(sale.total).toLocaleString('es-AR')}? Esta acción devolverá los productos al stock.`)) {
+      return;
+    }
+    
+    setModalLoading(true);
+    try {
+      // 1. Update sale status to 'cancelled'
+      const { error: updateError } = await supabase
+        .from('sales')
+        .update({ status: 'cancelled' })
+        .eq('id', sale.id);
+
+      if (updateError) throw updateError;
+
+      // 2. Fetch sale items to know what products were sold and their quantities
+      const { data: items, error: itemsError } = await supabase
+        .from('sale_items')
+        .select('product_id, quantity, product_name')
+        .eq('sale_id', sale.id);
+
+      if (itemsError) throw itemsError;
+
+      // 3. Restore stock for each item
+      if (items && items.length > 0) {
+        for (const item of items) {
+          if (!item.product_id) continue;
+          
+          // Get current stock
+          const { data: prodData, error: prodErr } = await supabase
+            .from('products')
+            .select('stock, name')
+            .eq('id', item.product_id)
+            .single();
+            
+          if (prodErr) {
+            console.error(`Error fetching product stock for ID ${item.product_id}:`, prodErr);
+            continue;
+          }
+          
+          const currentStock = parseInt(prodData?.stock || 0, 10);
+          const newStock = currentStock + parseInt(item.quantity || 0, 10);
+          
+          // Update product stock
+          const { error: stockErr } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', item.product_id);
+            
+          if (stockErr) {
+            console.error(`Error updating stock for product ID ${item.product_id}:`, stockErr);
+            continue;
+          }
+
+          // Write log to product_logs
+          await supabase.from('product_logs').insert({
+            product_id: item.product_id,
+            product_name: prodData.name || item.product_name,
+            user_id: user.id,
+            user_name: user.name,
+            action: 'edited',
+            details: {
+              reason: 'Venta cancelada por Administrador (Stock devuelto)',
+              sale_id: sale.id,
+              quantity_returned: item.quantity,
+              previous_stock: currentStock,
+              new_stock: newStock
+            }
+          });
+        }
+      }
+
+      // 4. Create in-app notification
+      await supabase.from('notifications').insert({
+        recipient_role: 'supervisor',
+        title: 'Venta Cancelada por Admin',
+        message: `El administrador ${user.name} canceló la venta ${sale.id.substring(0, 8)} de $${parseFloat(sale.total).toLocaleString('es-AR')}.`
+      });
+
+      alert('La venta ha sido cancelada por el administrador y el stock ha sido restaurado.');
+      
+      // Refresh calculations and modal details
+      await calculateMetrics();
+      await fetchModalData();
+    } catch (err) {
+      console.error('Error cancelling sale by admin:', err);
+      alert('Error al cancelar la venta.');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleReopenRegisterAdmin = async (cajaId, sellerName, sellerId) => {
+    if (!window.confirm(`¿Estás seguro de que deseas cancelar el cierre de caja de ${sellerName} y reabrirla?`)) {
+      return;
+    }
+    
+    setModalLoading(true);
+    try {
+      const { error } = await supabase
+        .from('cash_registers')
+        .update({
+          status: 'open',
+          closed_at: null,
+          closing_balance: null,
+          actual_balance: null,
+          validation_status: 'pending'
+        })
+        .eq('id', cajaId);
+
+      if (error) throw error;
+
+      // Log in-app notification for the seller
+      await supabase.from('notifications').insert({
+        recipient_id: sellerId,
+        title: 'Caja Reabierta por Admin',
+        message: `El administrador ${user.name} ha reabierto tu caja para que puedas continuar operando.`
+      });
+
+      alert('El cierre de caja ha sido cancelado y la caja ha sido reabierta.');
+      await calculateMetrics();
+      await fetchModalData();
+    } catch (err) {
+      console.error('Error reopening register by admin:', err);
+      alert('Error al reabrir la caja.');
     } finally {
       setModalLoading(false);
     }
@@ -1007,6 +1143,8 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                         <th>Fecha</th>
                         <th>Pago</th>
                         <th style={{ textAlign: 'right' }}>Total</th>
+                        <th style={{ textAlign: 'center' }}>Estado</th>
+                        <th style={{ textAlign: 'center' }}>Acción</th>
                       </tr>
                     )}
                     {activeModal === 'flows' && (
@@ -1025,6 +1163,8 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                         <th style={{ textAlign: 'right' }}>Esperado</th>
                         <th style={{ textAlign: 'right' }}>Declarado</th>
                         <th style={{ textAlign: 'right' }}>Desvío</th>
+                        <th style={{ textAlign: 'center' }}>Estado</th>
+                        <th style={{ textAlign: 'center' }}>Acción</th>
                       </tr>
                     )}
                   </thead>
@@ -1076,11 +1216,35 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                         )}
                         {activeModal === 'sales' && (
                           <>
-                            <td style={{ fontWeight: 'bold' }}>{row.profiles?.name || 'N/A'}</td>
-                            <td>{new Date(row.created_at).toLocaleDateString('es-AR')}</td>
-                            <td style={{ textTransform: 'capitalize' }}>{row.payment_method}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--accent-neon)' }}>
+                            <td style={{ fontWeight: 'bold', textDecoration: row.status === 'cancelled' ? 'line-through' : 'none', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              {row.profiles?.name || 'N/A'}
+                            </td>
+                            <td style={{ opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              {new Date(row.created_at).toLocaleDateString('es-AR')}
+                            </td>
+                            <td style={{ textTransform: 'capitalize', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              {row.payment_method}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: row.status === 'cancelled' ? 'var(--text-secondary)' : 'var(--accent-neon)', textDecoration: row.status === 'cancelled' ? 'line-through' : 'none', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
                               ${parseFloat(row.total).toLocaleString('es-AR')}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.status === 'cancelled' ? (
+                                <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 6px' }}>Cancelada</span>
+                              ) : (
+                                <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px' }}>Completada</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.status !== 'cancelled' && (
+                                <button
+                                  onClick={() => handleCancelSaleAdmin(row)}
+                                  className="btn-danger"
+                                  style={{ padding: '4px 8px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '4px' }}
+                                >
+                                  Cancelar
+                                </button>
+                              )}
                             </td>
                           </>
                         )}
@@ -1107,19 +1271,46 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                         )}
                         {activeModal === 'discrepancies' && (
                           <>
-                            <td style={{ fontWeight: 'bold' }}>{row.seller?.name || 'N/A'}</td>
-                            <td>{new Date(row.closed_at).toLocaleDateString('es-AR')}</td>
-                            <td style={{ textAlign: 'right' }}>${parseFloat(row.closing_balance).toLocaleString('es-AR')}</td>
-                            <td style={{ textAlign: 'right', color: 'var(--accent-gold-bright)' }}>
-                              ${parseFloat(row.actual_balance).toLocaleString('es-AR')}
+                            <td style={{ fontWeight: 'bold', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              {row.seller?.name || 'N/A'}
+                            </td>
+                            <td style={{ opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              {row.closed_at ? new Date(row.closed_at).toLocaleDateString('es-AR') : 'En curso'}
+                            </td>
+                            <td style={{ textAlign: 'right', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              ${parseFloat(row.closing_balance || 0).toLocaleString('es-AR')}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--accent-gold-bright)', opacity: row.status === 'cancelled' ? 0.6 : 1 }}>
+                              ${parseFloat(row.actual_balance || 0).toLocaleString('es-AR')}
                             </td>
                             <td style={{ 
                               textAlign: 'right', 
                               fontWeight: 'bold',
-                              color: (parseFloat(row.actual_balance) - parseFloat(row.closing_balance)) === 0 ? 'var(--text-primary)' : (parseFloat(row.actual_balance) - parseFloat(row.closing_balance)) > 0 ? 'var(--accent-neon)' : '#ef4444'
+                              color: (parseFloat(row.actual_balance || 0) - parseFloat(row.closing_balance || 0)) === 0 ? 'var(--text-primary)' : (parseFloat(row.actual_balance || 0) - parseFloat(row.closing_balance || 0)) > 0 ? 'var(--accent-neon)' : '#ef4444',
+                              opacity: row.status === 'cancelled' ? 0.6 : 1
                             }}>
-                              {(parseFloat(row.actual_balance) - parseFloat(row.closing_balance)) >= 0 ? '+' : ''}
-                              {(parseFloat(row.actual_balance) - parseFloat(row.closing_balance)).toLocaleString('es-AR')}
+                              {(parseFloat(row.actual_balance || 0) - parseFloat(row.closing_balance || 0)) >= 0 ? '+' : ''}
+                              {(parseFloat(row.actual_balance || 0) - parseFloat(row.closing_balance || 0)).toLocaleString('es-AR')}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.status === 'cancelled' ? (
+                                <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 6px' }}>Cancelada</span>
+                              ) : row.status === 'closed' ? (
+                                <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px' }}>Cerrada</span>
+                              ) : (
+                                <span className="badge badge-warning" style={{ fontSize: '9px', padding: '2px 6px' }}>Abierta</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.status === 'closed' && (
+                                <button
+                                  onClick={() => handleReopenRegisterAdmin(row.id, row.seller?.name, row.seller?.id)}
+                                  className="btn-secondary"
+                                  style={{ padding: '4px 8px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '4px', color: '#b8944a', borderColor: '#b8944a' }}
+                                >
+                                  Reabrir
+                                </button>
+                              )}
                             </td>
                           </>
                         )}

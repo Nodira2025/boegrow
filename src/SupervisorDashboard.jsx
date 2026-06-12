@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { 
   Check, X, Calendar, DollarSign, ArrowUpRight, 
-  ArrowDownRight, Bell, Send, UserCheck, ShieldAlert, LogOut, Plus, ShoppingBag
+  ArrowDownRight, Bell, Send, UserCheck, ShieldAlert, LogOut, Plus, ShoppingBag,
+  RefreshCw
 } from 'lucide-react';
 import ProductForm from './ProductForm';
 import InventoryHistory from './InventoryHistory';
@@ -182,6 +183,85 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error validating caja:', err);
       alert('Error al auditar la caja.');
+    }
+  };
+
+  const handleCancelClosure = async (cajaId, sellerName, sellerId) => {
+    if (!window.confirm(`¿Estás seguro de que deseas cancelar el cierre de caja de ${sellerName} y reabrirla? El vendedor podrá continuar vendiendo.`)) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('cash_registers')
+        .update({
+          status: 'open',
+          closed_at: null,
+          closing_balance: null,
+          actual_balance: null,
+          validation_status: 'pending'
+        })
+        .eq('id', cajaId);
+
+      if (error) throw error;
+
+      // Log in-app notification for the seller
+      await supabase.from('notifications').insert({
+        recipient_id: sellerId,
+        title: 'Caja Reabierta',
+        message: `El supervisor ${user.name} ha cancelado tu cierre de caja. Tu caja está abierta nuevamente para continuar operando.`
+      });
+
+      // Log broadcast notification for admin
+      await supabase.from('notifications').insert({
+        recipient_role: 'admin',
+        title: 'Cierre de Caja Cancelado',
+        message: `El supervisor ${user.name} canceló el cierre de caja de ${sellerName} (Reabierta).`
+      });
+
+      alert('El cierre de caja ha sido cancelado y la caja ha sido reabierta.');
+      fetchCajas();
+    } catch (err) {
+      console.error('Error cancelling closure:', err);
+      alert('Error al reabrir la caja.');
+    }
+  };
+
+  const handleCancelCaja = async (cajaId, sellerName, sellerId) => {
+    if (!window.confirm(`¿Estás seguro de que deseas cancelar definitivamente esta sesión de caja abierta de ${sellerName}? Se marcará como Cancelada en el historial.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('cash_registers')
+        .update({
+          status: 'cancelled',
+          closed_at: new Date().toISOString()
+        })
+        .eq('id', cajaId);
+
+      if (error) throw error;
+
+      // Log in-app notification for the seller
+      await supabase.from('notifications').insert({
+        recipient_id: sellerId,
+        title: 'Caja Cancelada',
+        message: `El supervisor ${user.name} ha cancelado tu sesión de caja abierta.`
+      });
+
+      // Log broadcast notification for admin
+      await supabase.from('notifications').insert({
+        recipient_role: 'admin',
+        title: 'Sesión de Caja Cancelada',
+        message: `El supervisor ${user.name} canceló la sesión de caja de ${sellerName}.`
+      });
+
+      alert('La sesión de caja ha sido cancelada.');
+      fetchCajas();
+    } catch (err) {
+      console.error('Error cancelling caja:', err);
+      alert('Error al cancelar la sesión de caja.');
     }
   };
 
@@ -449,10 +529,12 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
                           </p>
                         </div>
                         <span className={`badge ${
+                          c.status === 'cancelled' ? 'badge-danger' :
                           c.validation_status === 'approved' ? 'badge-success' : 
                           c.validation_status === 'rejected' ? 'badge-danger' : 'badge-warning'
                         }`}>
-                          {c.validation_status === 'approved' ? 'Aprobada' : 
+                          {c.status === 'cancelled' ? 'Cancelada' :
+                           c.validation_status === 'approved' ? 'Aprobada' : 
                            c.validation_status === 'rejected' ? 'Observada' : 
                            c.status === 'open' ? 'Abierta' : 'Pendiente Auditar'}
                         </span>
@@ -505,6 +587,26 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
                             <Check size={14} /> Aprobar cierre (Wame)
                           </button>
                         </div>
+                      )}
+
+                      {c.status === 'closed' && (
+                        <button
+                          onClick={() => handleCancelClosure(c.id, c.seller?.name, c.seller_id)}
+                          className="btn-secondary"
+                          style={{ padding: '8px', fontSize: '11px', width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: '#b8944a', borderColor: '#b8944a' }}
+                        >
+                          <RefreshCw size={12} /> Reabrir Caja (Cancelar Cierre)
+                        </button>
+                      )}
+
+                      {c.status === 'open' && (
+                        <button
+                          onClick={() => handleCancelCaja(c.id, c.seller?.name, c.seller_id)}
+                          className="btn-danger"
+                          style={{ padding: '8px', fontSize: '11px', width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        >
+                          <X size={12} /> Cancelar Sesión de Caja
+                        </button>
                       )}
                     </div>
                   );
