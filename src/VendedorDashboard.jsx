@@ -1293,12 +1293,14 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                 </div>
               )}
 
-              {/* Responsive Cards Grid: 6 columns on PC, 2 columns on mobile */}
+              {/* Responsive Cards Grid: 4 columns on PC, 2 columns on mobile */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: viewMode === 'desktop' ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)',
-                gap: '16px',
-                width: '100%'
+                gridTemplateColumns: viewMode === 'desktop' ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)',
+                gap: '20px',
+                width: '100%',
+                maxWidth: viewMode === 'desktop' ? '800px' : '100%',
+                margin: viewMode === 'desktop' ? '0 auto' : '0'
               }}>
                 {/* Card 1: Ingresar Venta */}
                 <div 
@@ -3008,40 +3010,41 @@ const styles = {
     border: '1px solid var(--border-color)',
   },
   actionCard: {
-    padding: '24px 16px',
+    padding: '32px 20px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
     cursor: 'pointer',
-    borderRadius: '16px',
+    borderRadius: '20px',
     backgroundColor: '#ffffff',
     border: '1px solid #eef2eb',
     position: 'relative',
     transition: 'all 0.2s ease',
+    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
   },
   cardIconContainer: {
-    width: '64px',
-    height: '64px',
-    borderRadius: '16px',
+    width: '80px',
+    height: '80px',
+    borderRadius: '20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: '12px',
+    marginBottom: '16px',
     overflow: 'hidden',
-    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
     border: '1px solid rgba(74, 124, 63, 0.15)'
   },
   cardTitle: {
-    fontSize: '13px',
+    fontSize: '15px',
     fontWeight: '700',
     color: '#2c3e2c',
-    margin: '0 0 4px 0',
+    margin: '0 0 6px 0',
   },
   cardText: {
-    fontSize: '10px',
+    fontSize: '12px',
     color: '#8fa58f',
     margin: 0,
-    lineHeight: '1.2',
+    lineHeight: '1.3',
   }
 };
