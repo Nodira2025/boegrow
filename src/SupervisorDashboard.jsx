@@ -598,7 +598,7 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
 
                 {/* Card 6: Solicitar Compras */}
                 <div 
-                  onClick={() => window.open('https://boeweb.netlify.app/', '_blank')}
+                  onClick={() => window.open('https://boeweb.netlify.app/vendedor', '_blank')}
                   className="glass-panel hover-card" 
                   style={styles.actionCard}
                 >

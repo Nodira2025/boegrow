@@ -1100,7 +1100,7 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
 
                 {/* Card 8: Solicitar Compras */}
                 <div 
-                  onClick={() => window.open('https://boeweb.netlify.app/', '_blank')}
+                  onClick={() => window.open('https://boeweb.netlify.app/vendedor', '_blank')}
                   className="glass-panel hover-card" 
                   style={styles.actionCard}
                 >
