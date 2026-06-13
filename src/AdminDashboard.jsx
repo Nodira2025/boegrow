@@ -2,11 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { 
   DollarSign, Users, ShoppingBag, ArrowUpRight, ArrowDownRight, 
-  TrendingUp, Calendar, Filter, X, Download, Printer, LogOut, Info, AlertTriangle, Edit
+  TrendingUp, Calendar, Filter, X, Download, Printer, LogOut, Info, AlertTriangle, Edit,
+  Home, Plus, UserCheck, ExternalLink
 } from 'lucide-react';
 import ProductForm from './ProductForm';
 
 export default function AdminDashboard({ user, onLogout, viewMode }) {
+  // Navigation & Dollar Rate states
+  const [activeTab, setActiveTab] = useState('inicio');
+  const [dollarRate, setDollarRate] = useState(1400);
+  const [visibleCount, setVisibleCount] = useState(25);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [cajaDiscrepancies, setCajaDiscrepancies] = useState([]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Stats
   const [stats, setStats] = useState({
     productCount: 0,
@@ -51,8 +65,55 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState(null);
 
+  async function fetchDollarRate() {
+    try {
+      const res = await fetch('https://dolarapi.com/v1/dolares/tarjeta');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.venta) {
+          setDollarRate(parseFloat(data.venta));
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching dollar rate:', e);
+    }
+  }
+
+  async function fetchLowStockProducts() {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('name, stock, barcode')
+        .lte('stock', 5)
+        .order('stock', { ascending: true })
+        .limit(5);
+      if (error) throw error;
+      setLowStockProducts(data || []);
+    } catch (e) {
+      console.error('Error fetching low stock products:', e);
+    }
+  }
+
+  async function fetchCajaDiscrepancies() {
+    try {
+      const { data, error } = await supabase
+        .from('cash_registers')
+        .select('*, seller:seller_id(name)')
+        .eq('status', 'closed')
+        .order('closed_at', { ascending: false })
+        .limit(4);
+      if (error) throw error;
+      setCajaDiscrepancies(data || []);
+    } catch (e) {
+      console.error('Error fetching discrepancies:', e);
+    }
+  }
+
   useEffect(() => {
     fetchSellers();
+    fetchDollarRate();
+    fetchLowStockProducts();
+    fetchCajaDiscrepancies();
     const today = new Date();
     setStartDate(today.toISOString().split('T')[0]);
     setEndDate(today.toISOString().split('T')[0]);
@@ -87,11 +148,12 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
   // Load detailed modal data when active modal changes
   useEffect(() => {
     if (activeModal) {
+      setVisibleCount(25);
       fetchModalData();
     }
   }, [activeModal, startDate, endDate, selectedSeller, selectedPayment]);
 
-  const fetchSellers = async () => {
+  async function fetchSellers() {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -101,9 +163,9 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error fetching profiles:', err);
     }
-  };
+  }
 
-  const fetchActiveWorkers = async () => {
+  async function fetchActiveWorkers() {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
@@ -120,9 +182,9 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error fetching workers:', err);
     }
-  };
+  }
 
-  const calculateMetrics = async () => {
+  async function calculateMetrics() {
     try {
       // 1. Get Products stats
       const { data: products, error: pError } = await supabase
@@ -277,9 +339,9 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error calculating metrics:', err);
     }
-  };
+  }
 
-  const fetchModalData = async () => {
+  async function fetchModalData() {
     setModalLoading(true);
     try {
       let data = [];
@@ -360,7 +422,7 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
     } finally {
       setModalLoading(false);
     }
-  };
+  }
 
   const handleCancelSaleAdmin = async (sale) => {
     if (!window.confirm(`¿Estás seguro de que deseas cancelar la venta por $${parseFloat(sale.total).toLocaleString('es-AR')}? Esta acción devolverá los productos al stock.`)) {
@@ -734,15 +796,23 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
           </div>
 
           <button 
-            onClick={() => setActiveModal(null)} 
-            className={`sidebar-item ${!activeModal ? 'active' : ''}`}
+            onClick={() => { setActiveTab('inicio'); setActiveModal(null); }} 
+            className={`sidebar-item ${activeTab === 'inicio' && !activeModal ? 'active' : ''}`}
+          >
+            <Home size={18} />
+            <span>Inicio</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal(null); }} 
+            className={`sidebar-item ${activeTab === 'dashboard' && !activeModal ? 'active' : ''}`}
           >
             <TrendingUp size={18} />
             <span>Dashboard</span>
           </button>
 
           <button 
-            onClick={() => setActiveModal('products')} 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal('products'); }} 
             className={`sidebar-item ${activeModal === 'products' ? 'active' : ''}`}
           >
             <ShoppingBag size={18} />
@@ -750,7 +820,7 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
           </button>
 
           <button 
-            onClick={() => setActiveModal('employees')} 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal('employees'); }} 
             className={`sidebar-item ${activeModal === 'employees' ? 'active' : ''}`}
           >
             <Users size={18} />
@@ -758,11 +828,27 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
           </button>
 
           <button 
-            onClick={() => setActiveModal('sales')} 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal('sales'); }} 
             className={`sidebar-item ${activeModal === 'sales' ? 'active' : ''}`}
           >
             <DollarSign size={18} />
             <span>Ventas</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal('flows'); }} 
+            className={`sidebar-item ${activeModal === 'flows' ? 'active' : ''}`}
+          >
+            <ArrowUpRight size={18} />
+            <span>Flujos Extra</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal('discrepancies'); }} 
+            className={`sidebar-item ${activeModal === 'discrepancies' ? 'active' : ''}`}
+          >
+            <AlertTriangle size={18} />
+            <span>Desvíos de Caja</span>
           </button>
 
           <div style={{ marginTop: 'auto', padding: '8px' }}>
@@ -824,258 +910,630 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
         {/* Main page content area */}
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingBottom: '32px' }}>
 
-      {/* Filter and Control Drawer */}
-      <section className="glass-panel" style={styles.filterSection}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', color: 'var(--accent-gold)' }}>
-          <Filter size={16} />
-          <h3 style={{ fontSize: '14px' }}>Filtros de Reporte</h3>
-        </div>
-
-        {/* Date presets grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
-          {['hoy', 'semana', 'mes', 'personalizado'].map(preset => (
-            <button
-              key={preset}
-              onClick={() => setFilterPreset(preset)}
-              style={{
-                padding: '6px 4px',
-                fontSize: '11px',
-                textTransform: 'capitalize',
-                backgroundColor: filterPreset === preset ? 'var(--accent-green)' : 'rgba(0,0,0,0.2)',
-                borderColor: filterPreset === preset ? 'var(--accent-neon)' : 'var(--border-color)',
-                borderWidth: '1px',
-                color: filterPreset === preset ? '#fff' : 'var(--text-secondary)'
-              }}
-            >
-              {preset === 'semana' ? '7 días' : preset}
-            </button>
-          ))}
-        </div>
-
-        {/* Date pickers (only show inputs if personalizado selected or always show as disabled for context) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-          <div>
-            <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Desde</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setFilterPreset('personalizado');
-              }}
-              style={{ padding: '8px', fontSize: '12px' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Hasta</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setFilterPreset('personalizado');
-              }}
-              style={{ padding: '8px', fontSize: '12px' }}
-            />
-          </div>
-        </div>
-
-        {/* Dynamic seller & payment dropdowns */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <div>
-            <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Empleado</label>
-            <select
-              value={selectedSeller}
-              onChange={(e) => setSelectedSeller(e.target.value)}
-              style={{ padding: '8px', fontSize: '12px' }}
-            >
-              <option value="">Todos</option>
-              {sellersList.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Medio de Pago</label>
-            <select
-              value={selectedPayment}
-              onChange={(e) => setSelectedPayment(e.target.value)}
-              style={{ padding: '8px', fontSize: '12px' }}
-            >
-              <option value="">Todos</option>
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="debito">Débito</option>
-              <option value="credito">Crédito</option>
-            </select>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Dashboard Stats Grid */}
-      <section style={styles.dashboardGrid}>
-        
-        {/* Total revenue */}
-        <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('sales')}>
-          <div style={styles.cardHeader}>
-            <TrendingUp className="text-success" size={20} />
-            <span style={styles.cardLabel}>INGRESOS POR VENTAS</span>
-          </div>
-          <div>
-            <p style={{ ...styles.cardValue, color: 'var(--accent-neon)' }}>
-              ${stats.salesTotal.toLocaleString('es-AR')}
-            </p>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '2px 0 6px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              Rentabilidad: <strong style={{ color: 'var(--accent-gold-bright)' }}>${(stats.netProfit || 0).toLocaleString('es-AR')}</strong>
-            </p>
-          </div>
-          <span style={styles.cardFooter}>{stats.salesCount} ventas registradas</span>
-        </div>
-
-        {/* Miscellaneous Incomes/Expenses */}
-        <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('flows')}>
-          <div style={styles.cardHeader}>
-            <DollarSign className="text-gold" size={20} />
-            <span style={styles.cardLabel}>MOVIMIENTOS CAJA EXTRA</span>
-          </div>
-          <p style={{ ...styles.cardValue, color: stats.netFlows >= 0 ? 'var(--accent-gold-bright)' : '#ef4444' }}>
-            {stats.netFlows >= 0 ? '+' : ''}${stats.netFlows.toLocaleString('es-AR')}
-          </p>
-          <span style={styles.cardFooter}>
-            In: +${stats.flowIncomes.toLocaleString('es-AR')} | Out: -${stats.flowExpenses.toLocaleString('es-AR')}
-          </span>
-        </div>
-
-        {/* Products */}
-        <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('products')}>
-          <div style={styles.cardHeader}>
-            <ShoppingBag className="text-gold" size={20} />
-            <span style={styles.cardLabel}>CATÁLOGO PRODUCTOS</span>
-          </div>
-          <p style={styles.cardValue}>{stats.productCount}</p>
-          <span style={styles.cardFooter}>{stats.totalStock} unidades en stock</span>
-        </div>
-
-        {/* Employees */}
-        <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('employees')}>
-          <div style={styles.cardHeader}>
-            <Users className="text-success" size={20} />
-            <span style={styles.cardLabel}>PLANTILLA EMPLEADOS</span>
-          </div>
-          <p style={styles.cardValue}>{stats.employeeCount}</p>
-          <span style={{ ...styles.cardFooter, color: 'var(--accent-neon)' }}>
-            🟢 {stats.activeWorkersCount} laborando hoy
-          </span>
-        </div>
-
-        {/* Discrepancies */}
-        <div className="glass-panel-gold" style={{ ...styles.dashboardCard, gridColumn: 'span 2' }} onClick={() => setActiveModal('discrepancies')}>
-          <div style={styles.cardHeader}>
-            <AlertTriangle className="text-gold" size={20} />
-            <span style={{ ...styles.cardLabel, color: 'var(--accent-gold)' }}>DESVÍOS / DIFERENCIA DE CAJA AUDITADOS</span>
-          </div>
-          <p style={{ ...styles.cardValue, color: stats.discrepancyTotal === 0 ? 'var(--text-primary)' : stats.discrepancyTotal > 0 ? 'var(--accent-neon)' : '#ef4444' }}>
-            {stats.discrepancyTotal >= 0 ? '+' : ''}${stats.discrepancyTotal.toLocaleString('es-AR')}
-          </p>
-          <span style={styles.cardFooter}>Diferencia neta física vs matemática en cierres de caja</span>
-        </div>
-      </section>
-
-      {/* Gente Laburando (Active Workers) */}
-      <section className="glass-panel" style={styles.workersSection}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '12px' }}>
-          <span style={{ color: 'var(--accent-neon)', fontSize: '18px' }}>🟢</span>
-          <h3 style={{ fontSize: '15px' }}>Gente Laburando Hoy</h3>
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {activeWorkers.map(w => {
-            const checkInTime = new Date(w.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            return (
-              <div key={w.id} style={styles.workerItem}>
+          {/* Tab 0: INICIO / HOME */}
+          {activeTab === 'inicio' && (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', flex: 1, padding: '20px' }}>
+              
+              {/* Header: Greeting + Digital clock */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '8px' }}>
                 <div>
-                  <p style={{ fontSize: '13px', fontWeight: 'bold' }}>{w.profiles?.name}</p>
-                  <p style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
-                    Rol: {w.profiles?.role}
+                  <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                    ¡Hola, {user.name}! 👑
+                  </h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Panel de Superadministración. Gestiona todo el ecosistema de BO growclub.
                   </p>
                 </div>
-                <span className="badge badge-success" style={{ fontSize: '10px' }}>
-                  Entró: {checkInTime}
-                </span>
+                {viewMode === 'desktop' && (
+                  <div style={{ textAlign: 'right', padding: '12px 18px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--accent-green)', fontFamily: 'monospace' }}>
+                      {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'capitalize', marginTop: '2px' }}>
+                      {currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' })}
+                    </div>
+                  </div>
+                )}
               </div>
-            );
-          })}
-          {activeWorkers.length === 0 && (
-            <p style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)', padding: '12px' }}>
-              Ningún empleado ha registrado entrada validada hoy.
-            </p>
+
+              {/* PC Version Quick Metrics Strip */}
+              {viewMode === 'desktop' && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '16px',
+                  width: '100%'
+                }}>
+                  {/* Metric 1: Ventas Totales */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'var(--accent-neon-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-neon)' }}>
+                      <TrendingUp size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Ingresos Ventas</span>
+                      <strong style={{ fontSize: '16px', color: 'var(--text-primary)', fontWeight: '800' }}>
+                        ${stats.salesTotal.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 2: Ganancia Estimada */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'var(--accent-gold-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-gold-bright)' }}>
+                      <DollarSign size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Ganancia Estimada</span>
+                      <strong style={{ fontSize: '16px', color: 'var(--accent-gold-bright)', fontWeight: '800' }}>
+                        ${stats.netProfit.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 3: Movimientos Extra */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'var(--accent-neon-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: stats.netFlows >= 0 ? 'var(--accent-neon)' : '#ef4444' }}>
+                      <DollarSign size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Flujos Extra Netos</span>
+                      <strong style={{ fontSize: '16px', color: stats.netFlows >= 0 ? 'var(--accent-neon)' : '#ef4444', fontWeight: '800' }}>
+                        {stats.netFlows >= 0 ? '+' : ''}${stats.netFlows.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 4: Artículos Registrados */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'var(--accent-neon-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-green)' }}>
+                      <ShoppingBag size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Productos en Base</span>
+                      <strong style={{ fontSize: '16px', color: 'var(--text-primary)', fontWeight: '800' }}>
+                        {stats.productCount} artículos
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Responsive Cards Grid: 6 columns on PC, 2 columns on mobile */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)',
+                gap: '16px',
+                width: '100%'
+              }}>
+                {/* Card 1: Ver Dashboard / Métricas */}
+                <div 
+                  onClick={() => setActiveTab('dashboard')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_metricas.png" alt="Métricas" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Ver Métricas</h4>
+                  <p style={styles.cardText}>Panel y métricas generales</p>
+                </div>
+
+                {/* Card 2: Catálogo de Productos */}
+                <div 
+                  onClick={() => { setActiveTab('dashboard'); setActiveModal('products'); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_inventario.png" alt="Productos" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Productos</h4>
+                  <p style={styles.cardText}>Catálogo y stock</p>
+                </div>
+
+                {/* Card 3: Plantilla de Empleados */}
+                <div 
+                  onClick={() => { setActiveTab('dashboard'); setActiveModal('employees'); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_asistencia.png" alt="Empleados" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Empleados</h4>
+                  <p style={styles.cardText}>Gestionar vendedores</p>
+                </div>
+
+                {/* Card 4: Historial de Ventas */}
+                <div 
+                  onClick={() => { setActiveTab('dashboard'); setActiveModal('sales'); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_venta.png" alt="Ventas" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Ventas</h4>
+                  <p style={styles.cardText}>Auditar cobros y tickets</p>
+                </div>
+
+                {/* Card 5: Flujos Extra */}
+                <div 
+                  onClick={() => { setActiveTab('dashboard'); setActiveModal('flows'); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_dinero.png" alt="Flujos Extra" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Flujos Extra</h4>
+                  <p style={styles.cardText}>Caja de ingresos y egresos</p>
+                </div>
+
+                {/* Card 6: Desvíos de Caja */}
+                <div 
+                  onClick={() => { setActiveTab('dashboard'); setActiveModal('discrepancies'); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_desvios.png" alt="Desvíos" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Desvíos de Caja</h4>
+                  <p style={styles.cardText}>Arqueos y discrepancias</p>
+                </div>
+
+                {/* Card 7: Registrar Producto */}
+                <div 
+                  onClick={() => { setProductToEdit(null); setIsProductFormOpen(true); }}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_inventario.png" alt="Nuevo Producto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Nuevo Producto</h4>
+                  <p style={styles.cardText}>Crear producto en base</p>
+                </div>
+
+                {/* Card 8: Solicitar Compras */}
+                <div 
+                  onClick={() => window.open('https://boeweb.netlify.app/', '_blank')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_compras.png" alt="Compras" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Solicitar Compras</h4>
+                  <p style={styles.cardText}>Sitio web de compras</p>
+                  <ExternalLink size={12} style={{ position: 'absolute', top: '12px', right: '12px', color: '#b8944a' }} />
+                </div>
+              </div>
+
+              {/* PC Version Content Filler: Active Workers & Metrics Overview */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? '1.2fr 1fr' : '1fr',
+                gap: '24px',
+                marginTop: '12px',
+                width: '100%'
+              }}>
+                {/* Column 1: Monitoreo de Personal y Cajas */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Panel 1: Personal Laburando Hoy */}
+                  <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                      <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                        <UserCheck size={16} className="text-success" />
+                        <span>Personal Laburando Hoy</span>
+                      </h3>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                        {activeWorkers.length} activos
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {activeWorkers.map(w => {
+                        const checkInTime = new Date(w.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <div key={w.id} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            backgroundColor: '#fbfbfa'
+                          }}>
+                            <div>
+                              <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{w.profiles?.name}</span>
+                              <span style={{ color: 'var(--text-secondary)', marginLeft: '8px', textTransform: 'capitalize', fontSize: '10px' }}>
+                                ({w.profiles?.role})
+                              </span>
+                            </div>
+                            <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>
+                              Ingreso: {checkInTime}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {activeWorkers.length === 0 && (
+                        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px', padding: '24px 0', margin: 0 }}>
+                          Ningún empleado ha registrado entrada hoy.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Panel 2: Desvíos de Caja Recientes */}
+                  <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                      <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                        <AlertTriangle size={16} style={{ color: '#e5c158' }} />
+                        <span>Monitoreo de Desvíos de Caja</span>
+                      </h3>
+                      <button 
+                        onClick={() => { setActiveTab('dashboard'); setActiveModal('discrepancies'); }}
+                        className="btn-secondary" 
+                        style={{ padding: '4px 10px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '6px' }}
+                      >
+                        Auditar Todos
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {cajaDiscrepancies.map(c => {
+                        const diff = parseFloat(c.declared_cash || 0) - parseFloat(c.closing_balance || 0);
+                        const hasDiff = Math.abs(diff) > 1;
+                        const dateStr = new Date(c.closed_at).toLocaleDateString('es-AR') + ' ' + new Date(c.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <div key={c.id} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            backgroundColor: '#fbfbfa'
+                          }}>
+                            <div>
+                              <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{c.seller?.name || 'Vendedor'}</span>
+                              <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px', marginTop: '2px' }}>
+                                Cierre: {dateStr}
+                              </span>
+                            </div>
+                            <span 
+                              className={`badge ${hasDiff ? 'badge-danger' : 'badge-success'}`} 
+                              style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', fontWeight: 'bold' }}
+                            >
+                              {hasDiff ? `Dif: $${diff.toLocaleString('es-AR')}` : 'Sin desvíos'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {cajaDiscrepancies.length === 0 && (
+                        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px', padding: '24px 0', margin: 0 }}>
+                          No hay cajas cerradas registradas para auditar.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 2: Alertas de Stock Crítico */}
+                <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                      <AlertTriangle size={16} style={{ color: '#ef4444' }} />
+                      <span>Alerta de Stock Crítico (≤ 5)</span>
+                    </h3>
+                    <button 
+                      onClick={() => { setActiveTab('dashboard'); setActiveModal('products'); }}
+                      className="btn-secondary" 
+                      style={{ padding: '4px 10px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '6px' }}
+                    >
+                      Ver Inventario
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto' }}>
+                    {lowStockProducts.map(p => (
+                      <div key={p.barcode} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '10px',
+                        fontSize: '12px',
+                        backgroundColor: '#fdf3f3'
+                      }}>
+                        <div>
+                          <span style={{ fontWeight: '700', color: '#7f1d1d', display: 'block' }}>{p.name}</span>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '10px', marginTop: '2px', display: 'block' }}>
+                            Código: {p.barcode || 'S/N'}
+                          </span>
+                        </div>
+                        <span 
+                          className="badge badge-danger" 
+                          style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', fontWeight: 'bold' }}
+                        >
+                          Stock: {p.stock}
+                        </span>
+                      </div>
+                    ))}
+                    {lowStockProducts.length === 0 && (
+                      <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px', padding: '48px 0', margin: 0 }}>
+                        No hay productos con stock crítico actualmente. ¡Todo en orden! 👍
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
           )}
+
+          {/* Tab 1: DASHBOARD GENERAL */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* Filter and Control Drawer */}
+              <section className="glass-panel" style={styles.filterSection}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', color: 'var(--accent-gold)' }}>
+                  <Filter size={16} />
+                  <h3 style={{ fontSize: '14px' }}>Filtros de Reporte</h3>
+                </div>
+
+                {/* Date presets grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
+                  {['hoy', 'semana', 'mes', 'personalizado'].map(preset => (
+                    <button
+                      key={preset}
+                      onClick={() => setFilterPreset(preset)}
+                      style={{
+                        padding: '6px 4px',
+                        fontSize: '11px',
+                        textTransform: 'capitalize',
+                        backgroundColor: filterPreset === preset ? 'var(--accent-green)' : 'rgba(0,0,0,0.2)',
+                        borderColor: filterPreset === preset ? 'var(--accent-neon)' : 'var(--border-color)',
+                        borderWidth: '1px',
+                        color: filterPreset === preset ? '#fff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {preset === 'semana' ? '7 días' : preset}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Date pickers (only show inputs if personalizado selected or always show as disabled for context) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Desde</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setFilterPreset('personalizado');
+                      }}
+                      style={{ padding: '8px', fontSize: '12px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Hasta</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setFilterPreset('personalizado');
+                      }}
+                      style={{ padding: '8px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Dynamic seller & payment dropdowns */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Empleado</label>
+                    <select
+                      value={selectedSeller}
+                      onChange={(e) => setSelectedSeller(e.target.value)}
+                      style={{ padding: '8px', fontSize: '12px' }}
+                    >
+                      <option value="">Todos</option>
+                      {sellersList.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Medio de Pago</label>
+                    <select
+                      value={selectedPayment}
+                      onChange={(e) => setSelectedPayment(e.target.value)}
+                      style={{ padding: '8px', fontSize: '12px' }}
+                    >
+                      <option value="">Todos</option>
+                      <option value="efectivo">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="debito">Débito</option>
+                      <option value="credito">Crédito</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* Main Dashboard Stats Grid */}
+              <section style={styles.dashboardGrid}>
+                
+                {/* Total revenue */}
+                <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('sales')}>
+                  <div style={styles.cardHeader}>
+                    <TrendingUp className="text-success" size={20} />
+                    <span style={styles.cardLabel}>INGRESOS POR VENTAS</span>
+                  </div>
+                  <div>
+                    <p style={{ ...styles.cardValue, color: 'var(--accent-neon)' }}>
+                      ${stats.salesTotal.toLocaleString('es-AR')}
+                    </p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '2px 0 6px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Rentabilidad: <strong style={{ color: 'var(--accent-gold-bright)' }}>${(stats.netProfit || 0).toLocaleString('es-AR')}</strong>
+                    </p>
+                  </div>
+                  <span style={styles.cardFooter}>{stats.salesCount} ventas registradas</span>
+                </div>
+
+                {/* Miscellaneous Incomes/Expenses */}
+                <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('flows')}>
+                  <div style={styles.cardHeader}>
+                    <DollarSign className="text-gold" size={20} />
+                    <span style={styles.cardLabel}>MOVIMIENTOS CAJA EXTRA</span>
+                  </div>
+                  <p style={{ ...styles.cardValue, color: stats.netFlows >= 0 ? 'var(--accent-gold-bright)' : '#ef4444' }}>
+                    {stats.netFlows >= 0 ? '+' : ''}${stats.netFlows.toLocaleString('es-AR')}
+                  </p>
+                  <span style={styles.cardFooter}>
+                    In: +${stats.flowIncomes.toLocaleString('es-AR')} | Out: -${stats.flowExpenses.toLocaleString('es-AR')}
+                  </span>
+                </div>
+
+                {/* Products */}
+                <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('products')}>
+                  <div style={styles.cardHeader}>
+                    <ShoppingBag className="text-gold" size={20} />
+                    <span style={styles.cardLabel}>CATÁLOGO PRODUCTOS</span>
+                  </div>
+                  <p style={styles.cardValue}>{stats.productCount}</p>
+                  <span style={styles.cardFooter}>{stats.totalStock} unidades en stock</span>
+                </div>
+
+                {/* Employees */}
+                <div className="glass-panel" style={styles.dashboardCard} onClick={() => setActiveModal('employees')}>
+                  <div style={styles.cardHeader}>
+                    <Users className="text-success" size={20} />
+                    <span style={styles.cardLabel}>PLANTILLA EMPLEADOS</span>
+                  </div>
+                  <p style={styles.cardValue}>{stats.employeeCount}</p>
+                  <span style={{ ...styles.cardFooter, color: 'var(--accent-neon)' }}>
+                    🟢 {stats.activeWorkersCount} laborando hoy
+                  </span>
+                </div>
+
+                {/* Discrepancies */}
+                <div className="glass-panel-gold" style={{ ...styles.dashboardCard, gridColumn: 'span 2' }} onClick={() => setActiveModal('discrepancies')}>
+                  <div style={styles.cardHeader}>
+                    <AlertTriangle className="text-gold" size={20} />
+                    <span style={{ ...styles.cardLabel, color: 'var(--accent-gold)' }}>DESVÍOS / DIFERENCIA DE CAJA AUDITADOS</span>
+                  </div>
+                  <p style={{ ...styles.cardValue, color: stats.discrepancyTotal === 0 ? 'var(--text-primary)' : stats.discrepancyTotal > 0 ? 'var(--accent-neon)' : '#ef4444' }}>
+                    {stats.discrepancyTotal >= 0 ? '+' : ''}${stats.discrepancyTotal.toLocaleString('es-AR')}
+                  </p>
+                  <span style={styles.cardFooter}>Diferencia neta física vs matemática en cierres de caja</span>
+                </div>
+              </section>
+
+              {/* Gente Laburando (Active Workers) */}
+              <section className="glass-panel" style={styles.workersSection}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--accent-neon)', fontSize: '18px' }}>🟢</span>
+                  <h3 style={{ fontSize: '15px' }}>Gente Laburando Hoy</h3>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {activeWorkers.map(w => {
+                    const checkInTime = new Date(w.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return (
+                      <div key={w.id} style={styles.workerItem}>
+                        <div>
+                          <p style={{ fontSize: '13px', fontWeight: 'bold' }}>{w.profiles?.name}</p>
+                          <p style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                            Rol: {w.profiles?.role}
+                          </p>
+                        </div>
+                        <span className="badge badge-success" style={{ fontSize: '10px' }}>
+                          Entró: {checkInTime}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {activeWorkers.length === 0 && (
+                    <p style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)', padding: '12px' }}>
+                      Ningún empleado ha registrado entrada validada hoy.
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              {/* Register Non-Sale Income/Expense Form */}
+              <section className="glass-panel" style={{ margin: '16px', padding: '16px' }}>
+                <form onSubmit={handleAddFlow} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                    <DollarSign size={18} className="text-gold" />
+                    <h3 style={{ fontSize: '14px' }}>Registrar Gasto / Ingreso Directo</h3>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setFlowType('expense')}
+                      style={{
+                        padding: '6px',
+                        fontSize: '12px',
+                        backgroundColor: flowType === 'expense' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0,0,0,0.2)',
+                        borderColor: flowType === 'expense' ? '#ef4444' : 'var(--border-color)',
+                        borderWidth: '1px',
+                        color: flowType === 'expense' ? '#ef4444' : 'var(--text-secondary)'
+                      }}
+                    >
+                      <ArrowDownRight size={14} /> Gasto / Egreso
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFlowType('income')}
+                      style={{
+                        padding: '6px',
+                        fontSize: '12px',
+                        backgroundColor: flowType === 'income' ? 'rgba(100, 221, 23, 0.15)' : 'rgba(0,0,0,0.2)',
+                        borderColor: flowType === 'income' ? 'var(--accent-neon)' : 'var(--border-color)',
+                        borderWidth: '1px',
+                        color: flowType === 'income' ? 'var(--accent-neon)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      <ArrowUpRight size={14} /> Ingreso Extra
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px' }}>
+                    <input
+                      type="number"
+                      placeholder="Monto"
+                      value={flowAmount}
+                      onChange={(e) => setFlowAmount(e.target.value)}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="Descripción / Concepto..."
+                      value={flowDesc}
+                      onChange={(e) => setFlowDesc(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <button type="submit" disabled={flowLoading} className="btn-primary" style={{ padding: '10px' }}>
+                    {flowLoading ? 'Registrando...' : 'Agregar Flujo'}
+                  </button>
+                </form>
+              </section>
+            </>
+          )}
+
         </div>
-      </section>
-
-      {/* Register Non-Sale Income/Expense Form */}
-      <section className="glass-panel" style={{ margin: '16px', padding: '16px' }}>
-        <form onSubmit={handleAddFlow} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-            <DollarSign size={18} className="text-gold" />
-            <h3 style={{ fontSize: '14px' }}>Registrar Gasto / Ingreso Directo</h3>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => setFlowType('expense')}
-              style={{
-                padding: '6px',
-                fontSize: '12px',
-                backgroundColor: flowType === 'expense' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0,0,0,0.2)',
-                borderColor: flowType === 'expense' ? '#ef4444' : 'var(--border-color)',
-                borderWidth: '1px',
-                color: flowType === 'expense' ? '#ef4444' : 'var(--text-secondary)'
-              }}
-            >
-              <ArrowDownRight size={14} /> Gasto / Egreso
-            </button>
-            <button
-              type="button"
-              onClick={() => setFlowType('income')}
-              style={{
-                padding: '6px',
-                fontSize: '12px',
-                backgroundColor: flowType === 'income' ? 'rgba(100, 221, 23, 0.15)' : 'rgba(0,0,0,0.2)',
-                borderColor: flowType === 'income' ? 'var(--accent-neon)' : 'var(--border-color)',
-                borderWidth: '1px',
-                color: flowType === 'income' ? 'var(--accent-neon)' : 'var(--text-secondary)'
-              }}
-            >
-              <ArrowUpRight size={14} /> Ingreso Extra
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px' }}>
-            <input
-              type="number"
-              placeholder="Monto"
-              value={flowAmount}
-              onChange={(e) => setFlowAmount(e.target.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Descripción / Concepto..."
-              value={flowDesc}
-              onChange={(e) => setFlowDesc(e.target.value)}
-              required
-            />
-          </div>
-
-          <button type="submit" disabled={flowLoading} className="btn-primary" style={{ padding: '10px' }}>
-            {flowLoading ? 'Registrando...' : 'Agregar Flujo'}
-          </button>
-        </form>
-      </section>
-
-      </div>
 
       {/* Details Table Modal */}
       {activeModal && (
@@ -1169,7 +1627,7 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                     )}
                   </thead>
                   <tbody>
-                    {modalData.map((row, index) => (
+                    {modalData.slice(0, visibleCount).map((row, index) => (
                       <tr key={row.id || index}>
                         {activeModal === 'products' && (
                           <>
@@ -1177,9 +1635,15 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                             <td>{row.category || 'N/A'}</td>
                             <td style={{ textAlign: 'right', color: 'var(--accent-neon)' }}>
                               ${parseFloat(row.price).toLocaleString('es-AR')}
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                US$ {(parseFloat(row.price) / dollarRate).toFixed(2)}
+                              </div>
                             </td>
                             <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
                               ${parseFloat(row.cost_price || 0).toLocaleString('es-AR')}
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                US$ {(parseFloat(row.cost_price || 0) / dollarRate).toFixed(2)}
+                              </div>
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               {row.stock <= 0 ? (
@@ -1327,8 +1791,61 @@ export default function AdminDashboard({ user, onLogout, viewMode }) {
                 </table>
               </div>
             )}
+
+            {activeModal && modalData.length > visibleCount && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 25)}
+                  className="btn-secondary"
+                  style={{
+                    padding: '8px 24px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    borderColor: 'var(--accent-green)',
+                    color: 'var(--accent-green)',
+                    backgroundColor: '#ffffff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ver Más ({modalData.length - visibleCount} restantes)
+                </button>
+              </div>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Bottom Navigation Tabs (mobile only) */}
+      {viewMode !== 'desktop' && (
+        <nav style={styles.navbar}>
+          <button 
+            onClick={() => { setActiveTab('inicio'); setActiveModal(null); }} 
+            style={{ 
+              ...styles.navItem, 
+              color: (activeTab === 'inicio' && !activeModal) ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: (activeTab === 'inicio' && !activeModal) ? 'rgba(74, 124, 63, 0.06)' : 'transparent'
+            }}
+          >
+            <Home size={20} />
+            <span style={{ fontSize: '10px' }}>Inicio</span>
+          </button>
+
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setActiveModal(null); }} 
+            style={{ 
+              ...styles.navItem, 
+              color: (activeTab === 'dashboard' && !activeModal) ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: (activeTab === 'dashboard' && !activeModal) ? 'rgba(74, 124, 63, 0.06)' : 'transparent'
+            }}
+          >
+            <TrendingUp size={20} />
+            <span style={{ fontSize: '10px' }}>Dashboard</span>
+          </button>
+        </nav>
       )}
 
       <ProductForm
@@ -1468,5 +1985,68 @@ const styles = {
     gap: '8px',
     marginTop: '12px',
     marginBottom: '8px',
+  },
+  navbar: {
+    position: 'fixed',
+    bottom: 0,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: '100%',
+    maxWidth: '480px',
+    height: '64px',
+    background: 'rgba(255, 255, 255, 0.95)',
+    borderTop: '1px solid var(--border-color)',
+    display: 'flex',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    zIndex: 10,
+    boxShadow: 'var(--shadow-lg)'
+  },
+  navItem: {
+    background: 'transparent',
+    border: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '8px',
+    width: '80px',
+    cursor: 'pointer'
+  },
+  actionCard: {
+    padding: '24px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    cursor: 'pointer',
+    borderRadius: '16px',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-color)',
+    position: 'relative',
+    transition: 'all 0.2s ease',
+  },
+  cardIconContainer: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+    border: '1px solid rgba(74, 124, 63, 0.15)'
+  },
+  cardTitle: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    margin: '0 0 4px 0',
+  },
+  cardText: {
+    fontSize: '10px',
+    color: 'var(--text-secondary)',
+    margin: 0,
   }
 };

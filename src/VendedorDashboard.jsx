@@ -4,7 +4,7 @@ import {
   Search, ShoppingCart, CreditCard, DollarSign, 
   ArrowUpRight, ArrowDownRight, RefreshCw, X, Check,
   TrendingUp, TrendingDown, BookOpen, Send, User, LogOut, Barcode, Plus,
-  Edit, Printer, ShoppingBag
+  Edit, Printer, ShoppingBag, Home, ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { jsPDF } from 'jspdf';
@@ -12,8 +12,16 @@ import ProductForm from './ProductForm';
 import BarcodeScannerModal from './BarcodeScannerModal';
 
 export default function VendedorDashboard({ user, onLogout, viewMode }) {
-  // Tabs: 'ventas', 'movimientos', 'mi_caja'
-  const [activeTab, setActiveTab] = useState('ventas');
+  // Tabs: 'inicio', 'ventas', 'movimientos', 'mi_caja'
+  const [activeTab, setActiveTab] = useState('inicio');
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
+  const [expenseCategory, setExpenseCategory] = useState('Servicio de luz (EDET)');
+  const [incomeCategory, setIncomeCategory] = useState('Cobro de Cuenta Corriente (Cliente)');
+  const [customFlowAmount, setCustomFlowAmount] = useState('');
+  const [customFlowDesc, setCustomFlowDesc] = useState('');
+  const [customFlowLoading, setCustomFlowLoading] = useState(false);
   const [selectedProductToEdit, setSelectedProductToEdit] = useState(null);
   
   // Scanners and Product Form toggles
@@ -67,6 +75,13 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
   const [loading, setLoading] = useState(false);
 
   const [dollarRate, setDollarRate] = useState(1400);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [quickFlowType, setQuickFlowType] = useState('expense');
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     fetchActiveRegister();
@@ -74,9 +89,9 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     fetchDollarRate();
   }, []);
 
-  const fetchDollarRate = async () => {
+  async function fetchDollarRate() {
     try {
-      const res = await fetch('https://dolarapi.com/v1/dolares/oficial');
+      const res = await fetch('https://dolarapi.com/v1/dolares/tarjeta');
       if (res.ok) {
         const data = await res.json();
         if (data && data.venta) {
@@ -86,6 +101,57 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     } catch (e) {
       console.error('Error fetching dollar rate:', e);
     }
+  }
+
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [searchQuery, selectedCategory, quickFilter, sortBy]);
+
+  const handleAddCustomFlow = async (type) => {
+    const amt = parseFloat(customFlowAmount);
+    if (!amt || amt <= 0) {
+      alert('Por favor ingresa un monto válido.');
+      return;
+    }
+
+    const categoryText = type === 'expense' ? expenseCategory : incomeCategory;
+    const finalDesc = customFlowDesc.trim() 
+      ? `${categoryText} - ${customFlowDesc.trim()}`
+      : categoryText;
+
+    setCustomFlowLoading(true);
+    try {
+      const { error } = await supabase
+        .from('cash_flows')
+        .insert({
+          cash_register_id: register.id,
+          user_id: user.id,
+          type: type,
+          amount: amt,
+          description: finalDesc
+        });
+
+      if (error) throw error;
+
+      // Log notification
+      await supabase.from('notifications').insert({
+        recipient_role: 'supervisor',
+        title: type === 'expense' ? 'Egreso Registrado' : 'Ingreso Registrado',
+        message: `${user.name} registró un ${type === 'expense' ? 'gasto' : 'ingreso'} extra de $${amt.toLocaleString('es-AR')}: ${finalDesc}.`
+      });
+
+      alert('Movimiento registrado con éxito.');
+      setCustomFlowAmount('');
+      setCustomFlowDesc('');
+      setIsExpenseModalOpen(false);
+      setIsIncomeModalOpen(false);
+      fetchRegisterStats();
+    } catch (err) {
+      console.error('Error adding custom flow:', err);
+      alert('Error al registrar el movimiento.');
+    } finally {
+      setCustomFlowLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -94,7 +160,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     }
   }, [register]);
 
-  const fetchActiveRegister = async () => {
+  async function fetchActiveRegister() {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -115,7 +181,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleOpenRegister = async () => {
     const openingAmt = parseFloat(openBalanceInput) || 0;
@@ -148,7 +214,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     }
   };
 
-  const fetchProducts = async () => {
+  async function fetchProducts() {
     try {
       const { data, error } = await supabase
         .from('products')
@@ -164,7 +230,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error fetching products:', err);
     }
-  };
+  }
 
   const handleBarcodeMatched = (matchedProduct) => {
     setIsBarcodeOpen(false);
@@ -179,7 +245,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
   };
 
 
-  const fetchRegisterStats = async () => {
+  async function fetchRegisterStats() {
     if (!register) return;
     try {
       // 1. Get Sales ordered by date descending
@@ -244,7 +310,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error fetching register stats:', err);
     }
-  };
+  }
 
   const handleCancelSale = async (sale) => {
     if (!window.confirm(`¿Estás seguro de que deseas cancelar la venta por $${parseFloat(sale.total).toLocaleString('es-AR')}? Esta acción devolverá los productos al stock.`)) {
@@ -886,6 +952,29 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
           {/* Navigation Links */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <button 
+              onClick={() => setActiveTab('inicio')} 
+              className={`sidebar-item ${activeTab === 'inicio' ? 'active' : ''}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+                backgroundColor: activeTab === 'inicio' ? '#ecf3e6' : 'transparent',
+                color: activeTab === 'inicio' ? '#4a7c3f' : '#5f7a5f',
+                width: '100%',
+                textAlign: 'left'
+              }}
+            >
+              <Home size={18} strokeWidth={2.5} style={{ color: activeTab === 'inicio' ? '#4a7c3f' : '#8fa58f' }} />
+              <span>Inicio</span>
+            </button>
+            <button 
               onClick={() => setActiveTab('ventas')} 
               className={`sidebar-item ${activeTab === 'ventas' ? 'active' : ''}`}
               style={{
@@ -1017,6 +1106,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #eef2eb', background: '#ffffff' }}>
             <div>
               <h2 style={{ fontSize: '22px', fontFamily: 'var(--font-heading)', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                {activeTab === 'inicio' && 'Inicio y Acciones'}
                 {activeTab === 'ventas' && 'Catálogo de Ventas'}
                 {activeTab === 'movimientos' && 'Registros de Caja Extra'}
                 {activeTab === 'mi_caja' && 'Mi Caja y Ventas'}
@@ -1036,7 +1126,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                 background: '#ffffff',
                 boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
               }}>
-                <span style={{ fontSize: '11px', color: '#8fa58f', fontWeight: '700', letterSpacing: '0.05em' }}>DÓLAR OFICIAL</span>
+                <span style={{ fontSize: '11px', color: '#8fa58f', fontWeight: '700', letterSpacing: '0.05em' }}>DÓLAR TARJETA</span>
                 <strong style={{ fontSize: '15px', color: '#4a7c3f', fontWeight: '800' }}>
                   ${dollarRate.toLocaleString('es-AR')}
                 </strong>
@@ -1104,7 +1194,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
             </div>
             <div style={{ width: '1px', background: 'var(--border-color)', alignSelf: 'stretch' }} />
             <div style={styles.statBox}>
-              <span style={styles.statLabel}>Dólar Oficial</span>
+              <span style={styles.statLabel}>Dólar Tarjeta</span>
               <span style={{ ...styles.statValue, color: '#4a7c3f' }}>
                 ${dollarRate.toLocaleString('es-AR')}
               </span>
@@ -1115,6 +1205,379 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
         {/* Main Content Area based on Tab */}
         <main style={{ padding: '24px', flex: 1, backgroundColor: '#fafaf9', minWidth: 0 }}>
           
+          {/* Tab Content: INICIO / ACCIONES */}
+          {activeTab === 'inicio' && (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, width: '100%' }}>
+              
+              {/* Header: Greeting + Digital clock */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '8px' }}>
+                <div>
+                  <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#2c3e2c', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                    ¡Hola, {user.name}! 🌱
+                  </h2>
+                  <p style={{ fontSize: '13px', color: '#5f7a5f', margin: '4px 0 0 0' }}>
+                    Bienvenido al panel de control de <strong>boegrowclub</strong>. ¿Qué deseas hacer hoy?
+                  </p>
+                </div>
+                {viewMode === 'desktop' && (
+                  <div style={{ textAlign: 'right', padding: '12px 18px', backgroundColor: '#ffffff', border: '1px solid #eef2eb', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#4a7c3f', fontFamily: 'monospace' }}>
+                      {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', textTransform: 'capitalize', marginTop: '2px' }}>
+                      {currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* PC Version Quick Metrics Strip */}
+              {viewMode === 'desktop' && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '16px',
+                  width: '100%'
+                }}>
+                  {/* Metric 1: Ventas del Turno */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(74, 124, 63, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a7c3f' }}>
+                      <ShoppingCart size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Ventas del Turno</span>
+                      <strong style={{ fontSize: '16px', color: '#2c3e2c', fontWeight: '800' }}>
+                        ${registerStats.salesTotal.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 2: Efectivo en Caja */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(184, 148, 74, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b8944a' }}>
+                      <BookOpen size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Efectivo Estimado</span>
+                      <strong style={{ fontSize: '16px', color: '#b8944a', fontWeight: '800' }}>
+                        ${registerStats.expectedCash.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 3: Banco / Transferencias */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(74, 124, 63, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a7c3f' }}>
+                      <CreditCard size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Cobros Banco</span>
+                      <strong style={{ fontSize: '16px', color: '#2c3e2c', fontWeight: '800' }}>
+                        ${registerStats.bankSales.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 4: Cotización Dólar Tarjeta */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(74, 124, 63, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a7c3f' }}>
+                      <DollarSign size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Dólar Tarjeta</span>
+                      <strong style={{ fontSize: '16px', color: '#4a7c3f', fontWeight: '800' }}>
+                        ${dollarRate.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Responsive Cards Grid: 6 columns on PC, 2 columns on mobile */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)',
+                gap: '16px',
+                width: '100%'
+              }}>
+                {/* Card 1: Ingresar Venta */}
+                <div 
+                  onClick={() => setActiveTab('ventas')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_venta.png" alt="Ventas" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Ingresar Venta</h4>
+                  <p style={styles.cardText}>Abrir catálogo y registrar ventas</p>
+                </div>
+
+                {/* Card 2: Ingresar Gasto */}
+                <div 
+                  onClick={() => setIsExpenseModalOpen(true)}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_gasto.png" alt="Gastos" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Ingresar Gasto</h4>
+                  <p style={styles.cardText}>Registrar egresos de Tucumán</p>
+                </div>
+
+                {/* Card 3: Ingresar Dinero */}
+                <div 
+                  onClick={() => setIsIncomeModalOpen(true)}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_dinero.png" alt="Dinero" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Ingresar Dinero</h4>
+                  <p style={styles.cardText}>Registrar depósitos en caja</p>
+                </div>
+
+                {/* Card 4: Solicitar Compras */}
+                <div 
+                  onClick={() => window.open('https://boeweb.netlify.app/', '_blank')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_compras.png" alt="Compras" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Solicitar Compras</h4>
+                  <p style={styles.cardText}>Acceder a BOE compras web</p>
+                  <ExternalLink size={12} style={{ position: 'absolute', top: '12px', right: '12px', color: '#b8944a' }} />
+                </div>
+              </div>
+
+              {/* PC Version Content Filler: Shift Summary & Recent Sales */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? '1.2fr 1fr' : '1fr',
+                gap: '24px',
+                marginTop: '12px',
+                width: '100%'
+              }}>
+                {/* Panel 1: Movimientos de Caja Rápido (Inline) */}
+                <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f5f5f4', paddingBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                      <BookOpen size={16} style={{ color: '#4a7c3f' }} />
+                      <span>Movimientos Rápidos de Caja</span>
+                    </h3>
+                    
+                    <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f0f4ee', padding: '3px', borderRadius: '8px' }}>
+                      <button 
+                        onClick={() => setQuickFlowType('expense')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: quickFlowType === 'expense' ? '#ef4444' : 'transparent',
+                          color: quickFlowType === 'expense' ? '#ffffff' : '#5f7a5f',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        Gasto
+                      </button>
+                      <button 
+                        onClick={() => setQuickFlowType('income')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: quickFlowType === 'income' ? '#4a7c3f' : 'transparent',
+                          color: quickFlowType === 'income' ? '#ffffff' : '#5f7a5f',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        Ingreso
+                      </button>
+                    </div>
+                  </div>
+
+                  {!register ? (
+                    <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                      <p style={{ color: '#8fa58f', fontSize: '13px', margin: '0 0 12px 0' }}>No tienes una sesión de caja abierta activa.</p>
+                      <button 
+                        onClick={() => setActiveTab('mi_caja')} 
+                        className="btn-primary" 
+                        style={{ padding: '8px 16px', fontSize: '12px' }}
+                      >
+                        Abrir Caja Turno
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {quickFlowType === 'expense' ? (
+                        <>
+                          <div>
+                            <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Concepto de Gasto (Tucumán)</label>
+                            <select
+                              value={expenseCategory}
+                              onChange={(e) => setExpenseCategory(e.target.value)}
+                              style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: '1px solid #eef2eb', fontSize: '12px', backgroundColor: '#ffffff' }}
+                            >
+                              <option value="Servicio de luz (EDET)">Servicio de luz (EDET)</option>
+                              <option value="Servicio de agua (SAT)">Servicio de agua (SAT)</option>
+                              <option value="Servicio de gas (Gasnor)">Servicio de gas (Gasnor)</option>
+                              <option value="Alquiler comercial (Local)">Alquiler comercial (Local)</option>
+                              <option value="Internet / Teléfono (Telecom/Fibertel)">Internet / Teléfono (Telecom/Fibertel)</option>
+                              <option value="Impuestos Provinciales (DGR Rentas)">Impuestos Provinciales (DGR Rentas)</option>
+                              <option value="Impuestos Municipales (TEM S.M. de Tucumán)">Impuestos Municipales (TEM S.M. de Tucumán)</option>
+                              <option value="Insumos de oficina y librería">Insumos de oficina y librería</option>
+                              <option value="Productos de limpieza y bazar">Productos de limpieza y bazar</option>
+                              <option value="Sueldos / Comisiones de personal">Sueldos / Comisiones de personal</option>
+                              <option value="Otros Gastos de Operación">Otros Gastos de Operación</option>
+                            </select>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Concepto de Ingreso</label>
+                            <select
+                              value={incomeCategory}
+                              onChange={(e) => setIncomeCategory(e.target.value)}
+                              style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: '1px solid #eef2eb', fontSize: '12px', backgroundColor: '#ffffff' }}
+                            >
+                              <option value="Cobro de Cuenta Corriente (Cliente)">Cobro de Cuenta Corriente (Cliente)</option>
+                              <option value="Aporte de Socios / Capital">Aporte de Socios / Capital</option>
+                              <option value="Devolución de Mercadería (Proveedor)">Devolución de Mercadería (Proveedor)</option>
+                              <option value="Venta Mayorista Especial">Venta Mayorista Especial</option>
+                              <option value="Cambio de Caja Inicial">Cambio de Caja Inicial</option>
+                              <option value="Otros Ingresos de Operación">Otros Ingresos de Operación</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Monto ($ ARS)</label>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={customFlowAmount}
+                            onChange={(e) => setCustomFlowAmount(e.target.value)}
+                            style={{ width: '100%', height: '36px', borderRadius: '10px', border: '1px solid #eef2eb', padding: '0 10px', fontSize: '12px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Detalles (Opcional)</label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Factura..."
+                            value={customFlowDesc}
+                            onChange={(e) => setCustomFlowDesc(e.target.value)}
+                            style={{ width: '100%', height: '36px', borderRadius: '10px', border: '1px solid #eef2eb', padding: '0 10px', fontSize: '12px' }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleAddCustomFlow(quickFlowType)}
+                        disabled={customFlowLoading}
+                        style={{
+                          width: '100%',
+                          height: '36px',
+                          borderRadius: '10px',
+                          border: 'none',
+                          fontWeight: 'bold',
+                          fontSize: '12px',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          backgroundColor: quickFlowType === 'expense' ? '#ef4444' : '#4a7c3f',
+                          marginTop: '4px',
+                          transition: 'background-color 0.2s'
+                        }}
+                      >
+                        {customFlowLoading ? 'Registrando...' : `Confirmar ${quickFlowType === 'expense' ? 'Gasto' : 'Ingreso'}`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Panel 2: Últimas Ventas de la Sesión */}
+                <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f5f5f4', paddingBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                      <ShoppingCart size={16} style={{ color: '#4a7c3f' }} />
+                      <span>Últimas Ventas Registradas (Sesión)</span>
+                    </h3>
+                    <button 
+                      onClick={() => setActiveTab('mi_caja')}
+                      className="btn-secondary" 
+                      style={{ padding: '4px 10px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '6px', borderColor: '#4a7c3f', color: '#4a7c3f', fontWeight: 'bold' }}
+                    >
+                      Ver Todas
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '185px', overflowY: 'auto' }}>
+                    {salesList.slice(0, 4).map(sale => {
+                      const saleTime = new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      const isCancelled = sale.status === 'cancelled';
+                      return (
+                        <div key={sale.id} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '10px 12px',
+                          border: '1px solid #f5f5f4',
+                          borderRadius: '10px',
+                          fontSize: '12px',
+                          opacity: isCancelled ? 0.6 : 1,
+                          backgroundColor: '#fbfbfa'
+                        }}>
+                          <div>
+                            <span style={{ fontWeight: '700', color: '#2c3e2c', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                              ${parseFloat(sale.total).toLocaleString('es-AR')}
+                            </span>
+                            <span style={{ color: '#8fa58f', marginLeft: '8px', fontSize: '11px' }}>
+                              Hora: {saleTime} | Pago: <span style={{ textTransform: 'capitalize' }}>{sale.payment_method}</span>
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {isCancelled ? (
+                              <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>Cancelada</span>
+                            ) : (
+                              <>
+                                <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>Cobrada</span>
+                                <button 
+                                  onClick={() => handleCancelSale(sale)}
+                                  className="btn-danger"
+                                  style={{ padding: '2px 6px', fontSize: '9px', height: 'auto', width: 'auto', borderRadius: '4px' }}
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {salesList.length === 0 && (
+                      <p style={{ textAlign: 'center', color: '#8fa58f', fontSize: '12px', padding: '24px 0', margin: 0 }}>
+                        No has registrado ventas en este turno todavía.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tab Content: VENTAS / CATALOG */}
           {activeTab === 'ventas' && (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
@@ -1327,7 +1790,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                 {/* Left Column: Product Cards */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className={viewMode === 'desktop' ? (viewLayout === 'grid' ? 'desktop-product-grid' : 'list-layout-rows') : styles.catalogGrid} style={{ display: viewLayout === 'list' && viewMode === 'desktop' ? 'flex' : undefined, flexDirection: 'column', gap: '12px' }}>
-                    {filteredProducts.map(prod => {
+                    {filteredProducts.slice(0, visibleCount).map(prod => {
                       const hasLowStock = prod.stock > 0 && prod.stock <= 3;
                       const hasNoStock = prod.stock <= 0;
                       const isOnOffer = prod.price > 15000; // Mock offers
@@ -1478,6 +1941,29 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                       </p>
                     )}
                   </div>
+
+                  {filteredProducts.length > visibleCount && (
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '24px 0' }}>
+                      <button
+                        onClick={() => setVisibleCount(prev => prev + 12)}
+                        className="btn-secondary"
+                        style={{
+                          padding: '10px 24px',
+                          fontSize: '13px',
+                          fontWeight: 'bold',
+                          borderRadius: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          borderColor: '#4a7c3f',
+                          color: '#4a7c3f',
+                          backgroundColor: '#ffffff'
+                        }}
+                      >
+                        <RefreshCw size={14} /> Ver Más ({filteredProducts.length - visibleCount} restantes)
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column: Order Summary & Filters (only desktop) */}
@@ -2106,6 +2592,18 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
       {viewMode !== 'desktop' && (
         <nav style={styles.navbar}>
           <button 
+            onClick={() => setActiveTab('inicio')} 
+            style={{ 
+              ...styles.navItem, 
+              color: activeTab === 'inicio' ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: activeTab === 'inicio' ? 'rgba(74, 124, 63, 0.06)' : 'transparent'
+            }}
+          >
+            <Home size={20} />
+            <span style={{ fontSize: '10px' }}>Inicio</span>
+          </button>
+
+          <button 
             onClick={() => setActiveTab('ventas')} 
             style={{ 
               ...styles.navItem, 
@@ -2162,6 +2660,141 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
         prefilledBarcode={prefilledBarcode}
         user={user}
       />
+
+      {/* Expense Modal (standardized Tucuman) */}
+      {isExpenseModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div className="glass-panel animate-fade-in" style={{ ...styles.modalContent, maxWidth: '400px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#ef4444', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ArrowDownRight size={18} /> Registrar Gasto Pyme (Tucumán)
+              </h3>
+              <button onClick={() => { setIsExpenseModalOpen(false); setCustomFlowAmount(''); setCustomFlowDesc(''); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Servicio / Tipo de Gasto</label>
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: '1px solid #eef2eb', fontSize: '13px', backgroundColor: '#ffffff' }}
+                >
+                  <option value="Servicio de luz (EDET)">Servicio de luz (EDET)</option>
+                  <option value="Servicio de agua (SAT)">Servicio de agua (SAT)</option>
+                  <option value="Servicio de gas (Gasnor)">Servicio de gas (Gasnor)</option>
+                  <option value="Alquiler comercial (Local)">Alquiler comercial (Local)</option>
+                  <option value="Internet / Teléfono (Telecom/Fibertel)">Internet / Teléfono (Telecom/Fibertel)</option>
+                  <option value="Impuestos Provinciales (DGR Rentas)">Impuestos Provinciales (DGR Rentas)</option>
+                  <option value="Impuestos Municipales (TEM S.M. de Tucumán)">Impuestos Municipales (TEM S.M. de Tucumán)</option>
+                  <option value="Insumos de oficina y librería">Insumos de oficina y librería</option>
+                  <option value="Productos de limpieza y bazar">Productos de limpieza y bazar</option>
+                  <option value="Sueldos / Comisiones de personal">Sueldos / Comisiones de personal</option>
+                  <option value="Otros Gastos de Operación">Otros Gastos de Operación</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Monto ($ ARS)</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={customFlowAmount}
+                  onChange={(e) => setCustomFlowAmount(e.target.value)}
+                  style={{ width: '100%', height: '38px', borderRadius: '10px', border: '1px solid #eef2eb', padding: '0 10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Detalles Adicionales (Opcional)</label>
+                <textarea
+                  placeholder="Ej: Factura vencimiento Junio..."
+                  value={customFlowDesc}
+                  onChange={(e) => setCustomFlowDesc(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #eef2eb', padding: '8px 10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <button
+                onClick={() => handleAddCustomFlow('expense')}
+                disabled={customFlowLoading}
+                className="btn-danger"
+                style={{ width: '100%', height: '40px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', marginTop: '6px' }}
+              >
+                {customFlowLoading ? 'Registrando...' : 'Confirmar Gasto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Income Modal (standardized Tucuman) */}
+      {isIncomeModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div className="glass-panel animate-fade-in" style={{ ...styles.modalContent, maxWidth: '400px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#4c9f38', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ArrowUpRight size={18} /> Registrar Ingreso Dinero
+              </h3>
+              <button onClick={() => { setIsIncomeModalOpen(false); setCustomFlowAmount(''); setCustomFlowDesc(''); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Concepto de Ingreso</label>
+                <select
+                  value={incomeCategory}
+                  onChange={(e) => setIncomeCategory(e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: '1px solid #eef2eb', fontSize: '13px', backgroundColor: '#ffffff' }}
+                >
+                  <option value="Cobro de Cuenta Corriente (Cliente)">Cobro de Cuenta Corriente (Cliente)</option>
+                  <option value="Aporte de Socios / Capital">Aporte de Socios / Capital</option>
+                  <option value="Devolución de Mercadería (Proveedor)">Devolución de Mercadería (Proveedor)</option>
+                  <option value="Venta Mayorista Especial">Venta Mayorista Especial</option>
+                  <option value="Cambio de Caja Inicial">Cambio de Caja Inicial</option>
+                  <option value="Otros Ingresos de Operación">Otros Ingresos de Operación</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Monto ($ ARS)</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={customFlowAmount}
+                  onChange={(e) => setCustomFlowAmount(e.target.value)}
+                  style={{ width: '100%', height: '38px', borderRadius: '10px', border: '1px solid #eef2eb', padding: '0 10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#5f7a5f', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Detalles Adicionales (Opcional)</label>
+                <textarea
+                  placeholder="Ej: Cliente Juan Pérez pago..."
+                  value={customFlowDesc}
+                  onChange={(e) => setCustomFlowDesc(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #eef2eb', padding: '8px 10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <button
+                onClick={() => handleAddCustomFlow('income')}
+                disabled={customFlowLoading}
+                className="btn-primary"
+                style={{ width: '100%', height: '40px', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', marginTop: '6px' }}
+              >
+                {customFlowLoading ? 'Registrando...' : 'Confirmar Ingreso'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
     </div>
@@ -2373,5 +3006,42 @@ const styles = {
     marginBottom: '20px',
     textAlign: 'left',
     border: '1px solid var(--border-color)',
+  },
+  actionCard: {
+    padding: '24px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    cursor: 'pointer',
+    borderRadius: '16px',
+    backgroundColor: '#ffffff',
+    border: '1px solid #eef2eb',
+    position: 'relative',
+    transition: 'all 0.2s ease',
+  },
+  cardIconContainer: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+    border: '1px solid rgba(74, 124, 63, 0.15)'
+  },
+  cardTitle: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#2c3e2c',
+    margin: '0 0 4px 0',
+  },
+  cardText: {
+    fontSize: '10px',
+    color: '#8fa58f',
+    margin: 0,
+    lineHeight: '1.2',
   }
 };

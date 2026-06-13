@@ -3,14 +3,14 @@ import { supabase } from './supabase';
 import { 
   Check, X, Calendar, DollarSign, ArrowUpRight, 
   ArrowDownRight, Bell, Send, UserCheck, ShieldAlert, LogOut, Plus, ShoppingBag,
-  RefreshCw
+  RefreshCw, Home, ExternalLink
 } from 'lucide-react';
 import ProductForm from './ProductForm';
 import InventoryHistory from './InventoryHistory';
 
 export default function SupervisorDashboard({ user, onLogout, viewMode }) {
-  // Tabs: 'asistencias', 'cajas', 'movimientos', 'inventario'
-  const [activeTab, setActiveTab] = useState('asistencias');
+  // Tabs: 'inicio', 'asistencias', 'cajas', 'movimientos', 'inventario'
+  const [activeTab, setActiveTab] = useState('inicio');
   
   // Product form toggle
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
@@ -19,6 +19,13 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
   // Data state
   const [attendances, setAttendances] = useState([]);
   const [cajas, setCajas] = useState([]);
+  const [activeWorkers, setActiveWorkers] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   // Extra flows form
   const [flowType, setFlowType] = useState('expense');
@@ -31,9 +38,10 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
   useEffect(() => {
     fetchAttendances();
     fetchCajas();
+    fetchActiveWorkers();
   }, []);
 
-  const fetchAttendances = async () => {
+  async function fetchAttendances() {
     setLoading(true);
     try {
       // Fetch all attendance records join profiles
@@ -53,9 +61,9 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const fetchCajas = async () => {
+  async function fetchCajas() {
     try {
       // Fetch all cash registers join profiles (seller)
       const { data, error } = await supabase
@@ -71,7 +79,22 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
     } catch (err) {
       console.error('Error fetching cajas:', err);
     }
-  };
+  }
+
+  async function fetchActiveWorkers() {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('*, profiles:employee_id(name, role)')
+        .eq('date', todayStr)
+        .not('check_in', 'is', null);
+      if (error) throw error;
+      setActiveWorkers(data || []);
+    } catch (e) {
+      console.error('Error fetching active workers:', e);
+    }
+  }
 
   const handleValidateAttendance = async (attendanceId, statusText, employeeName, employeeId, date) => {
     try {
@@ -319,6 +342,14 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
           </div>
 
           <button 
+            onClick={() => setActiveTab('inicio')} 
+            className={`sidebar-item ${activeTab === 'inicio' ? 'active' : ''}`}
+          >
+            <Home size={18} />
+            <span>Inicio</span>
+          </button>
+
+          <button 
             onClick={() => setActiveTab('asistencias')} 
             className={`sidebar-item ${activeTab === 'asistencias' ? 'active' : ''}`}
           >
@@ -395,6 +426,7 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
             <div>
               <h2 style={{ fontSize: '18px', fontFamily: 'var(--font-heading)' }}>
+                {activeTab === 'inicio' && 'Inicio y Acciones'}
                 {activeTab === 'asistencias' && 'Control de Asistencias'}
                 {activeTab === 'cajas' && 'Auditoría de Cajas'}
                 {activeTab === 'movimientos' && 'Registros de Movimientos'}
@@ -414,6 +446,283 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
 
         {/* Main Content Area */}
         <main style={styles.contentArea}>
+
+          {/* Tab 0: INICIO / HOME */}
+          {activeTab === 'inicio' && (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', flex: 1 }}>
+              
+              {/* Header: Greeting + Digital clock */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '8px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                    ¡Hola, {user.name}! 🛡️
+                  </h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Panel del Supervisor. Monitorea asistencias, audita cajas y administra el inventario.
+                  </p>
+                </div>
+                {viewMode === 'desktop' && (
+                  <div style={{ textAlign: 'right', padding: '12px 18px', backgroundColor: '#ffffff', border: '1px solid #eef2eb', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#4a7c3f', fontFamily: 'monospace' }}>
+                      {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', textTransform: 'capitalize', marginTop: '2px' }}>
+                      {currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* PC Version Quick Metrics Strip */}
+              {viewMode === 'desktop' && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '16px',
+                  width: '100%'
+                }}>
+                  {/* Metric 1: Cajas Abiertas */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(74, 124, 63, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a7c3f' }}>
+                      <Check size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Cajas Activas</span>
+                      <strong style={{ fontSize: '16px', color: '#2c3e2c', fontWeight: '800' }}>
+                        {cajas.filter(c => c.status === 'open').length} abiertas
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 2: Personal Laburando */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(74, 124, 63, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a7c3f' }}>
+                      <UserCheck size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Personal Activo</span>
+                      <strong style={{ fontSize: '16px', color: '#2c3e2c', fontWeight: '800' }}>
+                        {activeWorkers.length} de turno
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Metric 3: Validaciones Pendientes */}
+                  <div className="glass-panel" style={{ padding: '16px', borderRadius: '16px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: 'rgba(184, 148, 74, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b8944a' }}>
+                      <ShieldAlert size={20} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#8fa58f', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Pendiente Aprobación</span>
+                      <strong style={{ fontSize: '16px', color: '#b8944a', fontWeight: '800' }}>
+                        {attendances.filter(a => a.status === 'pending').length} asistencias
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Responsive Cards Grid: 6 columns on PC, 2 columns on mobile */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)',
+                gap: '16px',
+                width: '100%'
+              }}>
+                {/* Card 1: Validar Asistencias */}
+                <div 
+                  onClick={() => setActiveTab('asistencias')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_asistencia.png" alt="Asistencias" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Asistencias</h4>
+                  <p style={styles.cardText}>Validar ingresos de personal</p>
+                </div>
+
+                {/* Card 2: Auditar Cajas */}
+                <div 
+                  onClick={() => setActiveTab('cajas')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_metricas.png" alt="Cajas" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Auditar Cajas</h4>
+                  <p style={styles.cardText}>Controlar arqueos declarados</p>
+                </div>
+
+                {/* Card 3: Registrar Movimiento */}
+                <div 
+                  onClick={() => setActiveTab('movimientos')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_dinero.png" alt="Movimientos" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Registrar Flujos</h4>
+                  <p style={styles.cardText}>Añadir ingresos/egresos extra</p>
+                </div>
+
+                {/* Card 4: Historial de Inventario */}
+                <div 
+                  onClick={() => setActiveTab('inventario')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_inventario.png" alt="Inventario" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Inventario</h4>
+                  <p style={styles.cardText}>Auditar bitácora de productos</p>
+                </div>
+
+                {/* Card 5: Registrar Producto */}
+                <div 
+                  onClick={() => setIsProductFormOpen(true)}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_venta.png" alt="Nuevo Producto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Registrar Producto</h4>
+                  <p style={styles.cardText}>Crear producto en base</p>
+                </div>
+
+                {/* Card 6: Solicitar Compras */}
+                <div 
+                  onClick={() => window.open('https://boeweb.netlify.app/', '_blank')}
+                  className="glass-panel hover-card" 
+                  style={styles.actionCard}
+                >
+                  <div style={styles.cardIconContainer}>
+                    <img src="/images/zen_compras.png" alt="Compras" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <h4 style={styles.cardTitle}>Solicitar Compras</h4>
+                  <p style={styles.cardText}>Acceder a BOE compras web</p>
+                  <ExternalLink size={12} style={{ position: 'absolute', top: '12px', right: '12px', color: '#ec4899' }} />
+                </div>
+              </div>
+
+              {/* PC Version Content Filler: Active Workers & Cash Sessions */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: viewMode === 'desktop' ? '1fr 1.2fr' : '1fr',
+                gap: '24px',
+                marginTop: '12px',
+                width: '100%'
+              }}>
+                {/* Panel 1: Personal Activo Hoy */}
+                <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f5f5f4', paddingBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                      <UserCheck size={16} style={{ color: '#4a7c3f' }} />
+                      <span>Personal Laburando Hoy</span>
+                    </h3>
+                    <button 
+                      onClick={() => setActiveTab('asistencias')}
+                      className="btn-secondary" 
+                      style={{ padding: '4px 10px', fontSize: '10px', height: 'auto', width: 'auto', borderRadius: '6px', borderColor: '#4a7c3f', color: '#4a7c3f', fontWeight: 'bold' }}
+                    >
+                      Control Asistencias
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {activeWorkers.map(w => {
+                      const checkInTime = new Date(w.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      return (
+                        <div key={w.id} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '10px 12px',
+                          border: '1px solid #f5f5f4',
+                          borderRadius: '10px',
+                          fontSize: '12px',
+                          backgroundColor: '#fbfbfa'
+                        }}>
+                          <div>
+                            <span style={{ fontWeight: '700', color: '#2c3e2c' }}>{w.profiles?.name}</span>
+                            <span style={{ color: '#8fa58f', marginLeft: '8px', textTransform: 'capitalize', fontSize: '10px' }}>
+                              ({w.profiles?.role})
+                            </span>
+                          </div>
+                          <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>
+                            Ingreso: {checkInTime}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {activeWorkers.length === 0 && (
+                      <p style={{ textAlign: 'center', color: '#8fa58f', fontSize: '12px', padding: '24px 0', margin: 0 }}>
+                        Ningún empleado ha registrado entrada validada hoy.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Panel 2: Auditoría de Cajas de Hoy */}
+                <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1px solid #eef2eb', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f5f5f4', paddingBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '700', color: '#2c3e2c', margin: 0 }}>
+                      <DollarSign size={16} style={{ color: '#4a7c3f' }} />
+                      <span>Resumen de Cajas Recientes</span>
+                    </h3>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {cajas.slice(0, 4).map(c => {
+                      const openTime = new Date(c.opened_at).toLocaleDateString('es-AR') + ' ' + new Date(c.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      return (
+                        <div key={c.id} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 12px',
+                          border: '1px solid #f5f5f4',
+                          borderRadius: '10px',
+                          fontSize: '12px'
+                        }}>
+                          <div>
+                            <span style={{ fontWeight: '700', color: '#2c3e2c' }}>{c.seller?.name}</span>
+                            <span style={{ color: '#8fa58f', marginLeft: '8px', fontSize: '11px' }}>
+                              Apertura: {openTime}
+                            </span>
+                          </div>
+                          {c.status === 'open' ? (
+                            <span className="badge badge-warning" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>Abierta</span>
+                          ) : c.status === 'closed' ? (
+                            <span className="badge badge-success" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>Cerrada</span>
+                          ) : (
+                            <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>Cancelada</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {cajas.length === 0 && (
+                      <p style={{ textAlign: 'center', color: '#8fa58f', fontSize: '12px', padding: '16px 0', margin: 0 }}>
+                        No hay sesiones de caja registradas recientemente.
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                    <button 
+                      onClick={() => setActiveTab('cajas')}
+                      className="btn-secondary" 
+                      style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '8px', borderColor: '#4a7c3f', color: '#4a7c3f' }}
+                    >
+                      Ir a Auditoría Cajas
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Tab 1: ATTENDANCE CONTROL */}
           {activeTab === 'asistencias' && (
@@ -696,6 +1005,18 @@ export default function SupervisorDashboard({ user, onLogout, viewMode }) {
         {viewMode !== 'desktop' && (
           <nav style={styles.navbar}>
             <button 
+              onClick={() => setActiveTab('inicio')} 
+              style={{ 
+                ...styles.navItem, 
+                color: activeTab === 'inicio' ? 'var(--accent-green)' : 'var(--text-secondary)',
+                background: activeTab === 'inicio' ? 'rgba(74, 124, 63, 0.06)' : 'transparent'
+              }}
+            >
+              <Home size={20} />
+              <span style={{ fontSize: '10px' }}>Inicio</span>
+            </button>
+
+            <button 
               onClick={() => setActiveTab('asistencias')} 
               style={{ 
                 ...styles.navItem, 
@@ -823,5 +1144,42 @@ const styles = {
     gap: '4px',
     padding: '8px',
     width: '80px',
+  },
+  actionCard: {
+    padding: '24px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    cursor: 'pointer',
+    borderRadius: '16px',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-color)',
+    position: 'relative',
+    transition: 'all 0.2s ease',
+  },
+  cardIconContainer: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+    border: '1px solid rgba(74, 124, 63, 0.15)'
+  },
+  cardTitle: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    margin: '0 0 4px 0',
+  },
+  cardText: {
+    fontSize: '10px',
+    color: 'var(--text-secondary)',
+    margin: 0,
+    lineHeight: '1.2',
   }
 };

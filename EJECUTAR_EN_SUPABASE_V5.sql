@@ -12,4 +12,10 @@ ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed
 ALTER TABLE public.cash_registers DROP CONSTRAINT IF EXISTS cash_registers_status_check;
 ALTER TABLE public.cash_registers ADD CONSTRAINT cash_registers_status_check CHECK (status IN ('open', 'closed', 'cancelled'));
 
-SELECT 'Base de datos actualizada con soporte para cancelaciones (V5)' AS status;
+-- 3. Insertar usuario superadmin
+INSERT INTO public.profiles (name, role, username, password, phone)
+VALUES ('Super Administrador', 'admin', 'superadmin', 'Qwertyui2026', '+5491100000000')
+ON CONFLICT (username) 
+DO UPDATE SET password = EXCLUDED.password, role = EXCLUDED.role;
+
+SELECT 'Base de datos actualizada con soporte para cancelaciones y superadmin (V5)' AS status;

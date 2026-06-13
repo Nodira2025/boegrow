@@ -177,7 +177,7 @@ export default function ProductForm({ isOpen, onClose, productToEdit, onProductS
         // Fetch dollar rate for currency conversion
         let dollarRate = 1450.0;
         try {
-          const dRes = await fetch('https://dolarapi.com/v1/dolares/oficial');
+          const dRes = await fetch('https://dolarapi.com/v1/dolares/tarjeta');
           if (dRes.ok) {
             const dData = await dRes.json();
             if (dData && dData.venta) dollarRate = parseFloat(dData.venta);
