@@ -4,12 +4,13 @@ import {
   Search, ShoppingCart, CreditCard, DollarSign, 
   ArrowUpRight, ArrowDownRight, RefreshCw, X, Check,
   TrendingUp, TrendingDown, BookOpen, Send, User, LogOut, Barcode, Plus,
-  Edit, Printer, ShoppingBag, Home, ExternalLink
+  Edit, Printer, ShoppingBag, Home, ExternalLink, Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { jsPDF } from 'jspdf';
 import ProductForm from './ProductForm';
 import BarcodeScannerModal from './BarcodeScannerModal';
+import UnifiedScannerModal from './UnifiedScannerModal';
 
 export default function VendedorDashboard({ user, onLogout, viewMode }) {
   // Tabs: 'inicio', 'ventas', 'movimientos', 'mi_caja'
@@ -26,6 +27,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
   
   // Scanners and Product Form toggles
   const [isBarcodeOpen, setIsBarcodeOpen] = useState(false);
+  const [isUnifiedScannerOpen, setIsUnifiedScannerOpen] = useState(false);
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
   const [prefilledBarcode, setPrefilledBarcode] = useState('');
   
@@ -858,7 +860,11 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
       // mock popularity
       list.sort((a, b) => (b.stock || 0) - (a.stock || 0));
     } else {
-      list.sort((a, b) => a.name.localeCompare(b.name));
+      list.sort((a, b) => {
+        const nameA = (a.name || '').trim().toLowerCase();
+        const nameB = (b.name || '').trim().toLowerCase();
+        return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+      });
     }
 
     return list;
@@ -1304,7 +1310,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
               }}>
                 {/* Card 1: Ingresar Venta */}
                 <div 
-                  onClick={() => setActiveTab('ventas')}
+                  onClick={() => { setActiveTab('ventas'); setIsUnifiedScannerOpen(true); }}
                   className="glass-panel hover-card" 
                   style={styles.actionCard}
                 >
@@ -1605,6 +1611,31 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                     }}
                   />
                 </div>
+
+                {/* Unified Scanner Trigger Button */}
+                <button
+                  onClick={() => setIsUnifiedScannerOpen(true)}
+                  style={{
+                    height: '42px',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #c2d1b8',
+                    color: '#4a7c3f',
+                    padding: '0 14px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                    boxShadow: 'none'
+                  }}
+                  title="Abrir Escáner Inteligente (Cámara/IA/Texto)"
+                >
+                  <Sparkles size={16} />
+                  <span>Escáner Inteligente</span>
+                </button>
 
                 {/* Categories Dropdown */}
                 <select
@@ -2647,6 +2678,14 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
         isOpen={isBarcodeOpen}
         onClose={() => setIsBarcodeOpen(false)}
         onScanMatched={handleBarcodeMatched}
+        onScanNewBarcode={handleNewBarcodeScanned}
+      />
+
+      <UnifiedScannerModal
+        isOpen={isUnifiedScannerOpen}
+        onClose={() => setIsUnifiedScannerOpen(false)}
+        onProductSelected={(prod) => addToCart(prod)}
+        products={products}
         onScanNewBarcode={handleNewBarcodeScanned}
       />
 
