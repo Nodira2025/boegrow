@@ -84,6 +84,7 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
 
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
+  const trigger420BurstRef = React.useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,10 +135,29 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
       });
     }
 
-    // Interactive regular leaves particles (spawned on mousemove)
+    // Interactive regular and cannabis leaves particles (spawned on touch/mousemove)
     const interactiveParticles = [];
     let lastMouseX = null;
     let lastMouseY = null;
+
+    const spawnLeafParticles = (x, y, count = 1) => {
+      for (let i = 0; i < count; i++) {
+        const isCannabis = Math.random() > 0.45;
+        interactiveParticles.push({
+          x: x,
+          y: y,
+          size: isCannabis ? Math.random() * 14 + 10 : Math.random() * 8 + 6,
+          speedX: (Math.random() - 0.5) * 2.5,
+          speedY: (Math.random() - 0.5) * 2 - 1.2,
+          rotation: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.1,
+          opacity: 0.85,
+          decay: Math.random() * 0.015 + 0.008,
+          color: Math.random() > 0.65 ? 'rgba(184, 148, 74, 0.85)' : 'rgba(74, 124, 63, 0.85)',
+          isCannabis: isCannabis
+        });
+      }
+    };
 
     const handleMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -146,25 +166,79 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
 
       if (lastMouseX !== null && lastMouseY !== null) {
         const dist = Math.hypot(mouseX - lastMouseX, mouseY - lastMouseY);
-        // Spawn a regular leaf particle if moved enough or continuously
         if (dist > 6 && interactiveParticles.length < 80) {
-          interactiveParticles.push({
-            x: mouseX,
-            y: mouseY,
-            size: Math.random() * 8 + 6,
-            speedX: (Math.random() - 0.5) * 1.5 + (mouseX - lastMouseX) * 0.08,
-            speedY: (Math.random() - 0.5) * 1.5 - 0.5,
-            rotation: Math.random() * Math.PI * 2,
-            rotSpeed: (Math.random() - 0.5) * 0.08,
-            opacity: 0.75,
-            life: 1.0,
-            decay: Math.random() * 0.018 + 0.012,
-            color: Math.random() > 0.6 ? 'rgba(184, 148, 74, 0.7)' : 'rgba(74, 124, 63, 0.75)'
-          });
+          spawnLeafParticles(mouseX, mouseY, 1);
         }
       }
       lastMouseX = mouseX;
       lastMouseY = mouseY;
+    };
+
+    const handleTouchStart = (e) => {
+      if (e.touches && e.touches[0]) {
+        const rect = canvas.getBoundingClientRect();
+        const touchX = e.touches[0].clientX - rect.left;
+        const touchY = e.touches[0].clientY - rect.top;
+        spawnLeafParticles(touchX, touchY, 5); // Spawns 5 leaves on tap
+        lastMouseX = touchX;
+        lastMouseY = touchY;
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches && e.touches[0]) {
+        const rect = canvas.getBoundingClientRect();
+        const touchX = e.touches[0].clientX - rect.left;
+        const touchY = e.touches[0].clientY - rect.top;
+        if (lastMouseX !== null && lastMouseY !== null) {
+          const dist = Math.hypot(touchX - lastMouseX, touchY - lastMouseY);
+          if (dist > 6 && interactiveParticles.length < 80) {
+            spawnLeafParticles(touchX, touchY, 1);
+          }
+        }
+        lastMouseX = touchX;
+        lastMouseY = touchY;
+      }
+    };
+
+    // Assign the logo burst ref function
+    trigger420BurstRef.current = (clientX, clientY) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = clientX ? clientX - rect.left : width / 2;
+      const clickY = clientY ? clientY - rect.top : 200;
+
+      // Spawn 15 cannabis leaf particles
+      for (let i = 0; i < 15; i++) {
+        interactiveParticles.push({
+          x: clickX + (Math.random() - 0.5) * 20,
+          y: clickY + (Math.random() - 0.5) * 20,
+          size: Math.random() * 16 + 10,
+          speedX: (Math.random() - 0.5) * 4.5,
+          speedY: -(Math.random() * 3 + 1.5),
+          rotation: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.15,
+          opacity: 0.9,
+          decay: Math.random() * 0.012 + 0.008,
+          color: Math.random() > 0.5 ? 'rgba(74, 124, 63, 0.9)' : 'rgba(184, 148, 74, 0.9)',
+          isCannabis: true
+        });
+      }
+
+      // Spawn 4 smoke puffs
+      for (let i = 0; i < 4; i++) {
+        smokeParticles.push({
+          x: clickX + (Math.random() - 0.5) * 20,
+          y: clickY + (Math.random() - 0.5) * 20,
+          size: Math.random() * 60 + 40,
+          speedX: (Math.random() - 0.5) * 1.2,
+          speedY: -(Math.random() * 1.2 + 0.6),
+          opacity: 0.18,
+          growSpeed: Math.random() * 0.1 + 0.05,
+          waveFrequency: Math.random() * 0.01 + 0.005,
+          waveAmplitude: Math.random() * 0.4 + 0.1,
+          time: Math.random() * 100
+        });
+      }
     };
 
     const container = containerRef.current;
@@ -216,19 +290,24 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
         drawCannabisLeaf(ctx, p.x, p.y, p.size, p.rotation, `rgba(74, 124, 63, ${p.opacity})`);
       });
 
-      // Draw and update interactive regular leaf particles
+      // Draw and update interactive regular/cannabis leaf particles
       for (let i = interactiveParticles.length - 1; i >= 0; i--) {
         const p = interactiveParticles[i];
         p.x += p.speedX;
         p.y += p.speedY;
         p.rotation += p.rotSpeed;
         p.opacity -= p.decay;
-        p.speedY += 0.03; // gravity
+        p.speedY += 0.02; // slightly less gravity so they float nicely
 
         if (p.opacity <= 0) {
           interactiveParticles.splice(i, 1);
         } else {
-          drawRegularLeaf(ctx, p.x, p.y, p.size, p.rotation, p.color.replace(/[\d.]+\)$/, `${p.opacity})`));
+          const formattedColor = p.color.replace(/[\d.]+\)$/, `${p.opacity})`);
+          if (p.isCannabis) {
+            drawCannabisLeaf(ctx, p.x, p.y, p.size, p.rotation, formattedColor);
+          } else {
+            drawRegularLeaf(ctx, p.x, p.y, p.size, p.rotation, formattedColor);
+          }
         }
       }
 
@@ -241,6 +320,8 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
       window.removeEventListener('resize', handleResize);
       if (container) {
         container.removeEventListener('mousemove', handleMouseMove);
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchmove', handleTouchMove);
       }
       cancelAnimationFrame(animationFrameId);
     };
@@ -777,8 +858,16 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
               </svg>
             </div>
 
-            {/* Central Buddha Logo */}
-            <div className="animate-logo-assemble" style={{ zIndex: 1, position: 'relative' }}>
+            {/* Central Buddha Logo with 420 Eruption Easter Egg */}
+            <div 
+              className="animate-logo-assemble" 
+              onClick={(e) => {
+                if (trigger420BurstRef.current) {
+                  trigger420BurstRef.current(e.clientX, e.clientY);
+                }
+              }}
+              style={{ zIndex: 1, position: 'relative', cursor: 'pointer' }}
+            >
               <img 
                 src="/logo.jpeg" 
                 alt="Buddha logo" 
