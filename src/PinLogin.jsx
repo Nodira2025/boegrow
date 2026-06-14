@@ -116,6 +116,24 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
       });
     }
 
+    // Background smoke/mist particles
+    const smokeParticles = [];
+    const maxSmoke = 15;
+    for (let i = 0; i < maxSmoke; i++) {
+      smokeParticles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: Math.random() * 80 + 60,
+        speedX: (Math.random() - 0.5) * 0.3,
+        speedY: -(Math.random() * 0.25 + 0.15),
+        opacity: Math.random() * 0.07 + 0.02,
+        growSpeed: Math.random() * 0.06 + 0.03,
+        waveFrequency: Math.random() * 0.008 + 0.004,
+        waveAmplitude: Math.random() * 0.25 + 0.1,
+        time: Math.random() * 100
+      });
+    }
+
     // Interactive regular leaves particles (spawned on mousemove)
     const interactiveParticles = [];
     let lastMouseX = null;
@@ -157,6 +175,29 @@ export default function PinLogin({ onLogin, viewMode, onToggleViewMode }) {
     // Render loop
     const render = () => {
       ctx.clearRect(0, 0, width, height);
+
+      // Draw background smoke particles
+      smokeParticles.forEach(p => {
+        p.time += 1;
+        p.y += p.speedY;
+        p.x += p.speedX + Math.sin(p.time * p.waveFrequency) * p.waveAmplitude;
+        p.size += p.growSpeed;
+
+        let currentOpacity = p.opacity;
+        if (p.y < height * 0.7) {
+          currentOpacity = p.opacity * (p.y / (height * 0.7));
+        }
+
+        if (p.y < -p.size || currentOpacity <= 0) {
+          p.y = height + p.size;
+          p.x = Math.random() * width;
+          p.size = Math.random() * 80 + 60;
+          p.opacity = Math.random() * 0.07 + 0.02;
+          p.time = Math.random() * 100;
+        } else {
+          drawSmokePuff(ctx, p.x, p.y, p.size, currentOpacity);
+        }
+      });
 
       // Draw background cannabis particles
       cannabisParticles.forEach(p => {
@@ -1191,5 +1232,21 @@ function drawRegularLeaf(ctx, x, y, size, angle, color) {
   ctx.lineTo(0, -size * 0.75);
   ctx.stroke();
   
+  ctx.restore();
+}
+
+// Drawing helper for vector smoke particles (radial gradient)
+function drawSmokePuff(ctx, x, y, size, alpha) {
+  if (alpha <= 0) return;
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+  gradient.addColorStop(0, `rgba(165, 185, 160, ${alpha})`);
+  gradient.addColorStop(0.3, `rgba(180, 195, 175, ${alpha * 0.4})`);
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
