@@ -872,6 +872,31 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
 
   const filteredProducts = getProcessedProducts();
 
+  const getProductImage = (prod) => {
+    if (prod.image_url) return prod.image_url;
+    const category = (prod.category || '').toLowerCase();
+    const name = (prod.name || '').toLowerCase();
+    if (category.includes('fertilizante') || name.includes('fertilizante') || name.includes('namaste') || name.includes('nutrient')) {
+      return 'https://images.unsplash.com/photo-1592150621744-aca64f48394a?w=400&auto=format&fit=crop&q=80';
+    }
+    if (category.includes('sustrato') || name.includes('sustrato') || name.includes('tierra') || name.includes('grow mix') || name.includes('cultivate')) {
+      return 'https://images.unsplash.com/photo-1463936575829-25148e1db1b8?w=400&auto=format&fit=crop&q=80';
+    }
+    if (category.includes('iluminación') || category.includes('iluminacion') || name.includes('led') || name.includes('sodio') || name.includes('panel') || name.includes('luz')) {
+      return 'https://images.unsplash.com/photo-1530968464165-7a1861cbaf9f?w=400&auto=format&fit=crop&q=80';
+    }
+    if (category.includes('parafernalia') || name.includes('papel') || name.includes('picador') || name.includes('grinder') || name.includes('seda') || name.includes('hemp')) {
+      return 'https://images.unsplash.com/photo-1603909223429-69bb7101f420?w=400&auto=format&fit=crop&q=80';
+    }
+    if (category.includes('carpa') || name.includes('carpa') || name.includes('armario') || name.includes('grow tent')) {
+      return 'https://images.unsplash.com/photo-1508780709619-79562169bc34?w=400&auto=format&fit=crop&q=80';
+    }
+    if (category.includes('accesorio') || name.includes('medidor') || name.includes('ph') || name.includes('termohigrómetro')) {
+      return 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?w=400&auto=format&fit=crop&q=80';
+    }
+    return 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=400&auto=format&fit=crop&q=80';
+  };
+
   // Render open register form if no register active
   if (!register) {
     return (
@@ -1880,7 +1905,7 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
                             overflow: 'hidden'
                           }}>
                             <img 
-                              src={prod.image_url || "/logo.jpeg"} 
+                              src={getProductImage(prod)} 
                               alt={prod.name} 
                               style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} 
                             />
