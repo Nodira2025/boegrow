@@ -2712,6 +2712,8 @@ export default function VendedorDashboard({ user, onLogout, viewMode }) {
         onProductSelected={(prod) => addToCart(prod)}
         products={products}
         onScanNewBarcode={handleNewBarcodeScanned}
+        onProductSaved={fetchProducts}
+        user={user}
       />
 
       <ProductForm

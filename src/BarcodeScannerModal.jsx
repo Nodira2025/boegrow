@@ -11,6 +11,8 @@ export default function BarcodeScannerModal({ isOpen, onClose, onScanMatched, on
   const [isContinuous, setIsContinuous] = useState(false);
   const [scanSuccessMessage, setScanSuccessMessage] = useState('');
   const [scanErrorMessage, setScanErrorMessage] = useState('');
+  const [cameras, setCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
   
   const scannerRef = useRef(null);
   const isPausedRef = useRef(false);
@@ -32,20 +34,38 @@ export default function BarcodeScannerModal({ isOpen, onClose, onScanMatched, on
     }
   }, [isOpen]);
 
-  const startScanner = async () => {
+  const startScanner = async (overrideId = null) => {
     try {
       setScannerError('');
-      // Check if another scanner is running, clear it first
       if (scannerRef.current) {
         await stopScanner();
+      }
+
+      let devId = overrideId || selectedCameraId;
+      let activeCameras = cameras;
+
+      if (!activeCameras || activeCameras.length === 0) {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          setCameras(devices);
+          activeCameras = devices;
+          if (!devId) {
+            devId = selectDefaultCamera(devices);
+            setSelectedCameraId(devId);
+          }
+        } else {
+          throw new Error("No se encontraron cámaras.");
+        }
       }
 
       const html5QrCode = new Html5Qrcode(containerId);
       scannerRef.current = html5QrCode;
       
       setScanning(true);
+      const targetSource = devId ? devId : { facingMode: 'environment' };
+
       await html5QrCode.start(
-        { facingMode: 'environment' },
+        targetSource,
         {
           fps: 12,
           // Rectangular box suitable for standard long barcodes
@@ -83,6 +103,15 @@ export default function BarcodeScannerModal({ isOpen, onClose, onScanMatched, on
         setScanning(false);
       }
     }
+  };
+
+  const handleToggleCamera = async () => {
+    if (cameras.length <= 1) return;
+    const currentIndex = cameras.findIndex(c => c.id === selectedCameraId);
+    const nextIndex = (currentIndex + 1) % cameras.length;
+    const nextCameraId = cameras[nextIndex].id;
+    setSelectedCameraId(nextCameraId);
+    await startScanner(nextCameraId);
   };
 
   const handleScanSuccess = async (decodedText) => {
@@ -155,6 +184,33 @@ export default function BarcodeScannerModal({ isOpen, onClose, onScanMatched, on
         {/* Viewfinder Container */}
         <div style={styles.viewfinderWrapper}>
           <div id={containerId} style={styles.viewfinderDiv}></div>
+          
+          {cameras.length > 1 && scanning && (
+            <button
+              onClick={handleToggleCamera}
+              type="button"
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: '#fff',
+                zIndex: 20,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+              }}
+              title="Cambiar Cámara"
+            >
+              <RefreshCw size={14} />
+            </button>
+          )}
           
           {scanning && (
             <div style={styles.laserOverlay}>
@@ -349,3 +405,32 @@ styleTag.innerHTML = `
 }
 `;
 document.head.appendChild(styleTag);
+
+// Smart camera selection helper to prioritize main rear camera
+function selectDefaultCamera(devices) {
+  if (!devices || devices.length === 0) return null;
+  
+  const backCameras = devices.filter(device => {
+    const label = (device.label || '').toLowerCase();
+    return label.includes('back') || label.includes('rear') || label.includes('trasera') || label.includes('principal');
+  });
+
+  if (backCameras.length > 0) {
+    const mainBackCameras = backCameras.filter(device => {
+      const label = (device.label || '').toLowerCase();
+      return !label.includes('zoom') && 
+             !label.includes('tele') && 
+             !label.includes('wide') && 
+             !label.includes('3x') && 
+             !label.includes('0.5') && 
+             !label.includes('2x');
+    });
+
+    if (mainBackCameras.length > 0) {
+      return mainBackCameras[0].id;
+    }
+    return backCameras[0].id;
+  }
+  
+  return devices[0].id;
+}
