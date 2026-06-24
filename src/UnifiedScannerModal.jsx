@@ -170,19 +170,29 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
   };
 
   // AI Vision Logic
-  const handleImageCapture = (e) => {
+  const handleImageCapture = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1.5 * 1024 * 1024) {
-        alert('La imagen es muy pesada (máx 1.5MB)');
-        return;
-      }
-      setImageFile(file);
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
+      setAiError('');
       setAiResult(null);
       setAiMatches([]);
-      setAiError('');
+      
+      try {
+        let finalFile = file;
+        if (file.size > 1.5 * 1024 * 1024) {
+          setAiLoadingStep('Comprimiendo imagen...');
+          setAiLoading(true);
+          finalFile = await compressImage(file, 1200, 1200, 0.75);
+          setAiLoading(false);
+        }
+        setImageFile(finalFile);
+        const previewUrl = URL.createObjectURL(finalFile);
+        setImagePreview(previewUrl);
+      } catch (err) {
+        console.error('Error compressing image:', err);
+        setAiError('Error al procesar y comprimir la imagen.');
+        setAiLoading(false);
+      }
     }
   };
 
@@ -991,3 +1001,55 @@ const styles = {
     transition: 'all 0.2s',
   }
 };
+
+// Image compression helper using canvas to keep images <= 1.5MB
+function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Canvas compression returned null'));
+              return;
+            }
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
