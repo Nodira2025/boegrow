@@ -44,6 +44,7 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
   const [scannedBarcodeForAi, setScannedBarcodeForAi] = useState('');
   const [cameras, setCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState('');
+  const [showModeSelection, setShowModeSelection] = useState(true);
 
   const scannerRef = useRef(null);
   const isPausedRef = useRef(false);
@@ -59,9 +60,10 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
       setScannerError('');
       setScannedCodeNotMatched('');
       setIsValidating(false);
+      setShowModeSelection(true);
       isPausedRef.current = false;
 
-      if (activeTab === 'camera') {
+      if (activeTab === 'camera' && !showModeSelection) {
         const timer = setTimeout(() => {
           startCameraScanner();
         }, 300);
@@ -73,7 +75,7 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
     } else {
       stopCameraScanner();
     }
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, showModeSelection]);
 
   // Clean preview URL on unmount
   useEffect(() => {
@@ -528,15 +530,114 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
   return (
     <div style={styles.overlay}>
       <div className="glass-panel animate-fade-in" style={styles.modal}>
-        {isValidating ? (
+        {showModeSelection ? (
+          <>
+            {/* Header del Selector de Modo */}
+            <div style={styles.header}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={18} className="text-success" style={{ color: '#4a7c3f' }} />
+                <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#2c3e2c', margin: 0 }}>Ingresar Venta</h3>
+              </div>
+              <button onClick={onClose} style={styles.closeBtn}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Selector de Modo */}
+            <div style={{ ...styles.body, display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px 20px' }}>
+              <h4 style={{ fontSize: '14px', fontWeight: '800', color: '#2c3e2c', margin: '0 0 4px 0', textAlign: 'center' }}>
+                ¿Qué tipo de artículo deseas vender?
+              </h4>
+              
+              {/* Option 1: Artículo en Inventario */}
+              <div 
+                onClick={() => {
+                  setShowModeSelection(false);
+                  setActiveTab('text');
+                }}
+                className="hover-card"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  backgroundColor: '#f1f7ef',
+                  border: '1px solid #c2d1b8',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ backgroundColor: '#4a7c3f', color: '#fff', borderRadius: '12px', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Search size={22} />
+                </div>
+                <div>
+                  <h5 style={{ fontSize: '13px', fontWeight: '800', color: '#2c3e2c', margin: '0 0 2px 0' }}>Artículo en Inventario</h5>
+                  <p style={{ fontSize: '11px', color: '#5f7a5f', margin: 0 }}>Buscar en el catálogo existente o escanear código de barras.</p>
+                </div>
+              </div>
+
+              {/* Option 2: Artículo Nuevo */}
+              <div 
+                onClick={() => {
+                  setShowModeSelection(false);
+                  setActiveTab('ai');
+                  // Trigger file input upload/capture
+                  setTimeout(() => {
+                    fileInputRef.current?.click();
+                  }, 300);
+                }}
+                className="hover-card"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  backgroundColor: '#fffdf5',
+                  border: '1px solid #fef3c7',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ backgroundColor: '#b8944a', color: '#fff', borderRadius: '12px', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={22} />
+                </div>
+                <div>
+                  <h5 style={{ fontSize: '13px', fontWeight: '800', color: '#2c3e2c', margin: '0 0 2px 0' }}>Artículo Nuevo (No en catálogo)</h5>
+                  <p style={{ fontSize: '11px', color: '#8b6e30', margin: 0 }}>Escanear/tomar foto con IA para identificar, buscar precios e ingresar a stock.</p>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : isValidating ? (
           <>
             {/* Header de Validación */}
             <div style={styles.header}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button 
+                  type="button"
+                  onClick={() => setIsValidating(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#8fa58f',
+                    padding: '4px',
+                    marginRight: '4px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Volver"
+                >
+                  <ArrowRight size={18} style={{ transform: 'rotate(180deg)' }} />
+                </button>
                 <Sparkles size={18} className="text-gold" style={{ color: '#b8944a' }} />
                 <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#2c3e2c', margin: 0 }}>Validar Stock Nuevo</h3>
               </div>
-              <button onClick={() => setIsValidating(false)} style={styles.closeBtn}>
+              <button onClick={onClose} style={styles.closeBtn}>
                 <X size={18} />
               </button>
             </div>
@@ -682,8 +783,25 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
             {/* Header normal */}
             <div style={styles.header}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button 
+                  type="button"
+                  onClick={() => setShowModeSelection(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#8fa58f',
+                    padding: '4px',
+                    marginRight: '4px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Volver a opciones"
+                >
+                  <ArrowRight size={18} style={{ transform: 'rotate(180deg)' }} />
+                </button>
                 <Sparkles size={18} className="text-success" style={{ color: '#4a7c3f' }} />
-                <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#2c3e2c', margin: 0 }}>Escáner y Buscador Inteligente</h3>
+                <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#2c3e2c', margin: 0 }}>Escáner y Buscador</h3>
               </div>
               <button onClick={onClose} style={styles.closeBtn}>
                 <X size={18} />
