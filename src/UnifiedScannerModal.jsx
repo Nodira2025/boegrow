@@ -51,10 +51,9 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
   const fileInputRef = useRef(null);
   const cameraContainerId = 'unified-scanner-viewfinder';
 
-  // Handle modal open/close & Tab change
+  // Reset states only when the modal opens/closes
   useEffect(() => {
     if (isOpen) {
-      // Clear scanner feedback messages
       setScanSuccessMessage('');
       setScanErrorMessage('');
       setScannerError('');
@@ -62,16 +61,21 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
       setIsValidating(false);
       setShowModeSelection(true);
       isPausedRef.current = false;
+    } else {
+      stopCameraScanner();
+    }
+  }, [isOpen]);
 
-      if (activeTab === 'camera' && !showModeSelection) {
-        const timer = setTimeout(() => {
-          startCameraScanner();
-        }, 300);
-        return () => {
-          clearTimeout(timer);
-          stopCameraScanner();
-        };
-      }
+  // Manage camera lifecycle based on tab and mode selection
+  useEffect(() => {
+    if (isOpen && activeTab === 'camera' && !showModeSelection) {
+      const timer = setTimeout(() => {
+        startCameraScanner();
+      }, 300);
+      return () => {
+        clearTimeout(timer);
+        stopCameraScanner();
+      };
     } else {
       stopCameraScanner();
     }
@@ -530,6 +534,14 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
   return (
     <div style={styles.overlay}>
       <div className="glass-panel animate-fade-in" style={styles.modal}>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleImageCapture}
+          style={{ display: 'none' }}
+          ref={fileInputRef}
+        />
         {showModeSelection ? (
           <>
             {/* Header del Selector de Modo */}
@@ -1060,14 +1072,6 @@ export default function UnifiedScannerModal({ isOpen, onClose, onProductSelected
               {/* TAB 3: AI VISION / PHOTO SEARCH */}
               {activeTab === 'ai' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleImageCapture}
-                    style={{ display: 'none' }}
-                    ref={fileInputRef}
-                  />
 
                   {!localStorage.getItem('gemini_api_key') && (
                     <div style={{ padding: '10px 12px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '12px', fontSize: '11px', color: '#b45309', display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
